@@ -8,16 +8,18 @@
   // Launch the backend API server and static web server using start.sh (non-blocking)
   "postStartCommand": "bash .devcontainer/start.sh",
 
-  // Configure port forwarding
+  // Configure port forwarding with public visibility to allow cross-origin requests
   "forwardPorts": [8000, 3000],
   "portsAttributes": {
     "8000": {
       "label": "QDI Backend API",
-      "onAutoForward": "silent"
+      "onAutoForward": "silent",
+      "visibility": "public"
     },
     "3000": {
       "label": "QDI Web Console",
-      "onAutoForward": "openBrowser"
+      "onAutoForward": "openBrowser",
+      "visibility": "public"
     }
   },
 
