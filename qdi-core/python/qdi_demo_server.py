@@ -1,6 +1,7 @@
 import sys
 import os
 import re
+import json
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,14 +36,66 @@ session_state = {
     "authenticated": False,
 }
 
-MOCK_DEVICE_CONFIG = {
+DEFAULT_DEVICE_CONFIG = {
     "device_id": "mock_qdi_qubit_v1",
+    "display_name": "Mock QDI QPU",
     "supported_auth_methods": ["token"],
     "supported_task_types": ["openqasm3", "openqasm2", "qir"],
     "is_ready": True,
     "supports_estimation": True,
     "num_qubits": 32,
+    "max_shots": 10000,
+    "estimation": {
+        "base_duration_sec": 0.02,
+        "duration_per_shot_sec": 0.00003,
+        "duration_per_depth_sec": 0.004,
+        "cost_per_shot_usd": 0.0,
+        "cost_per_qubit_usd": 0.0,
+    },
+    "task_type_aliases": {
+        "qasm3": "openqasm3",
+        "qasm2": "openqasm2",
+        "llvm": "qir",
+    },
 }
+
+def load_device_config() -> dict:
+    config_path = os.environ.get(
+        "QDI_DEVICE_CONFIG",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "mock_device_config.json")
+    )
+    config = DEFAULT_DEVICE_CONFIG.copy()
+
+    if os.path.exists(config_path):
+        with open(config_path, "r", encoding="utf-8") as config_file:
+            loaded_config = json.load(config_file)
+        config.update(loaded_config)
+    else:
+        print(f"Device config not found at {config_path}; using built-in defaults.")
+
+    config["num_qubits"] = int(config["num_qubits"])
+    config["max_shots"] = int(config.get("max_shots", DEFAULT_DEVICE_CONFIG["max_shots"]))
+    config["supported_task_types"] = list(config["supported_task_types"])
+    config["supported_auth_methods"] = list(config["supported_auth_methods"])
+    config["supports_estimation"] = bool(config.get("supports_estimation", False))
+    estimation_config = DEFAULT_DEVICE_CONFIG["estimation"].copy()
+    estimation_config.update(config.get("estimation", {}))
+    config["estimation"] = estimation_config
+
+    aliases = DEFAULT_DEVICE_CONFIG["task_type_aliases"].copy()
+    aliases.update(config.get("task_type_aliases", {}))
+    config["task_type_aliases"] = aliases
+
+    if config["num_qubits"] < 1:
+        raise RuntimeError("Device config num_qubits must be at least 1.")
+    if config["max_shots"] < 1:
+        raise RuntimeError("Device config max_shots must be at least 1.")
+    if not config["supported_task_types"]:
+        raise RuntimeError("Device config supported_task_types must not be empty.")
+
+    return config
+
+MOCK_DEVICE_CONFIG = load_device_config()
 
 class AuthRequest(BaseModel):
     token: str
@@ -55,6 +108,7 @@ class TaskSubmitRequest(BaseModel):
 class EstimateRequest(BaseModel):
     task_payload: str
     task_type: str = "openqasm3"
+    shots: int = 100
 
 def require_discovered():
     if not session_state["discovered"]:
@@ -71,11 +125,97 @@ def require_authenticated():
         )
 
 def validate_task_type(task_type: str):
-    if task_type not in MOCK_DEVICE_CONFIG["supported_task_types"]:
+    normalized_type = normalize_task_type(task_type)
+    if normalized_type not in MOCK_DEVICE_CONFIG["supported_task_types"]:
         raise HTTPException(
             status_code=422,
             detail=f"Unsupported task_type '{task_type}'. Supported types: {', '.join(MOCK_DEVICE_CONFIG['supported_task_types'])}."
         )
+    return normalized_type
+
+def normalize_task_type(task_type: str) -> str:
+    return MOCK_DEVICE_CONFIG.get("task_type_aliases", {}).get(task_type, task_type)
+
+def validate_shots(shots: int):
+    if shots < 1:
+        raise HTTPException(status_code=422, detail="shots must be at least 1.")
+    max_shots = MOCK_DEVICE_CONFIG["max_shots"]
+    if shots > max_shots:
+        raise HTTPException(status_code=422, detail=f"shots exceeds device max_shots of {max_shots}.")
+
+def parse_qasm_qubits(program: str) -> int:
+    declarations = [
+        r"\bqubit\s*\[\s*(\d+)\s*\]",
+        r"\bqreg\s+\w+\s*\[\s*(\d+)\s*\]",
+    ]
+    for pattern in declarations:
+        match = re.search(pattern, program)
+        if match:
+            return int(match.group(1))
+    return 1
+
+def parse_qir_qubits(program: str) -> int:
+    qubit_indices = {0} if "__quantum__" in program else set()
+    for match in re.finditer(r"i64\s+(\d+)\s+to\s+%Qubit\*", program):
+        qubit_indices.add(int(match.group(1)))
+    return max(qubit_indices) + 1 if qubit_indices else 1
+
+def estimate_logical_depth(program: str, task_type: str) -> int:
+    if task_type == "qir":
+        return max(1, len(re.findall(r"__quantum__qis__\w+__body", program)))
+    gate_lines = [
+        line.strip()
+        for line in program.splitlines()
+        if line.strip()
+        and not line.strip().startswith("//")
+        and not line.strip().startswith("OPENQASM")
+        and not line.strip().startswith("include")
+        and not line.strip().startswith("qubit")
+        and not line.strip().startswith("bit")
+        and not line.strip().startswith("qreg")
+        and not line.strip().startswith("creg")
+    ]
+    return max(1, len(gate_lines))
+
+def estimate_payload_qubits(program: str, task_type: str) -> int:
+    if task_type == "qir":
+        return parse_qir_qubits(program)
+    return parse_qasm_qubits(program)
+
+def validate_payload_fits_device(program: str, task_type: str) -> int:
+    requested_qubits = estimate_payload_qubits(program, task_type)
+    if requested_qubits > MOCK_DEVICE_CONFIG["num_qubits"]:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Program requires {requested_qubits} qubits, but device supports {MOCK_DEVICE_CONFIG['num_qubits']}."
+        )
+    return requested_qubits
+
+def estimate_resources(program: str, task_type: str, shots: int) -> dict:
+    requested_qubits = validate_payload_fits_device(program, task_type)
+    logical_depth = estimate_logical_depth(program, task_type)
+    estimation_config = MOCK_DEVICE_CONFIG.get("estimation", {})
+
+    duration = (
+        float(estimation_config.get("base_duration_sec", 0.0))
+        + shots * float(estimation_config.get("duration_per_shot_sec", 0.0))
+        + logical_depth * float(estimation_config.get("duration_per_depth_sec", 0.0))
+    )
+    cost = (
+        shots * float(estimation_config.get("cost_per_shot_usd", 0.0))
+        + requested_qubits * float(estimation_config.get("cost_per_qubit_usd", 0.0))
+    )
+
+    return {
+        "device_id": MOCK_DEVICE_CONFIG["device_id"],
+        "task_type": task_type,
+        "requested_qubits": requested_qubits,
+        "max_qubits": MOCK_DEVICE_CONFIG["num_qubits"],
+        "shots": shots,
+        "logical_depth": logical_depth,
+        "shots_duration_sec": round(duration, 6),
+        "estimated_cost_usd": round(cost, 6),
+    }
 
 def parse_qasm(qasm_str: str) -> QuantumCircuit:
     if "OPENQASM 3" in qasm_str:
@@ -193,18 +333,20 @@ def authenticate(req: AuthRequest):
 def send(req: TaskSubmitRequest):
     require_discovered()
     require_authenticated()
-    validate_task_type(req.task_type)
+    task_type = validate_task_type(req.task_type)
+    validate_shots(req.shots)
+    validate_payload_fits_device(req.task_payload, task_type)
     try:
         # Run C-ABI Send call to get a valid task ID and manage execution state machine
         task_id = client.send(
             task_payload=req.task_payload.encode("utf-8"),
-            task_type=req.task_type,
+            task_type=task_type,
             shots=req.shots
         )
         
         # Perform real classical simulation inside the server wrapper
         try:
-            if req.task_type == "qir":
+            if task_type == "qir":
                 counts = simulate_qir(req.task_payload, req.shots)
             else:
                 qc = parse_qasm(req.task_payload)
@@ -228,17 +370,12 @@ def send(req: TaskSubmitRequest):
 def estimate(req: EstimateRequest):
     require_discovered()
     require_authenticated()
-    validate_task_type(req.task_type)
+    task_type = validate_task_type(req.task_type)
+    validate_shots(req.shots)
     if not MOCK_DEVICE_CONFIG["supports_estimation"]:
         raise HTTPException(status_code=501, detail="This device does not support resource estimation.")
 
-    try:
-        return client.estimate_resources(
-            task_payload=req.task_payload.encode("utf-8"),
-            task_type=req.task_type
-        )
-    except QDIError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return estimate_resources(req.task_payload, task_type, req.shots)
 
 @app.get("/qdi/v1/devices/mock/tasks/{task_id}/status")
 def monitor(task_id: str):

@@ -774,8 +774,10 @@
                 // Populate UI
                 const detailsBox = document.getElementById("deviceDetails");
                 detailsBox.innerHTML = `
+                    ${data.display_name ? `<div class="detail-row"><span>Name</span><span>${data.display_name}</span></div>` : ""}
                     <div class="detail-row"><span>Device ID</span><span>${data.device_id}</span></div>
                     <div class="detail-row"><span>Qubits</span><span>${data.num_qubits}</span></div>
+                    ${data.max_shots ? `<div class="detail-row"><span>Max Shots</span><span>${data.max_shots}</span></div>` : ""}
                     <div class="detail-row"><span>Task Formats</span><span>${data.supported_task_types.join(", ")}</span></div>
                     <div class="detail-row"><span>Supports Estimation</span><span>${data.supports_estimation}</span></div>
                 `;
@@ -814,10 +816,12 @@
 
         async function estimateTask() {
             const payload = document.getElementById("codeEditor").value;
+            const shots = parseInt(document.getElementById("shotsInput").value);
             const url = "/qdi/v1/devices/mock/estimate";
             const reqBody = {
                 task_payload: payload,
-                task_type: detectTaskType(payload)
+                task_type: detectTaskType(payload),
+                shots: shots
             };
 
             log("Requesting QDI resource estimation...");
@@ -836,7 +840,7 @@
 
                 if (!response.ok) throw new Error(detailMessage(data, "Resource estimation failed."));
 
-                log(`Estimate: depth ${data.logical_depth}, duration ${data.shots_duration_sec}s, cost $${data.estimated_cost_usd}`, "success");
+                log(`Estimate: ${data.requested_qubits}/${data.max_qubits} qubits, depth ${data.logical_depth}, duration ${data.shots_duration_sec}s, cost $${data.estimated_cost_usd}`, "success");
             } catch (err) {
                 log(err.message, "error");
             } finally {

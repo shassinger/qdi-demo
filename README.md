@@ -88,6 +88,32 @@ Then open:
 http://<host-name-or-ip>:8004?api=http://<host-name-or-ip>:8003
 ```
 
+### Mock Device Configuration
+The demo device descriptor is configured by:
+
+```text
+qdi-core/python/mock_device_config.json
+```
+
+Use this file to set device characteristics such as:
+
+* `num_qubits`
+* `max_shots`
+* `supported_task_types`
+* `supported_auth_methods`
+* `supports_estimation`
+* estimation timing/cost coefficients
+
+To run with a different config without editing the default file:
+
+```bash
+QDI_DEVICE_CONFIG=/path/to/device.json bash .devcontainer/start.sh
+```
+
+The API uses the configured capabilities for `discover`, task-format
+validation, shot-limit validation, qubit-limit validation, and resource
+estimation.
+
 ---
 
 ## Protocol Execution Guide
