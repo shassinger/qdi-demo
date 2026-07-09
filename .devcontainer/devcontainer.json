@@ -5,8 +5,8 @@
   // Set up development tools and compile QDI mock library inside the container (using sudo for root commands)
   "postCreateCommand": "sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y clang cmake && clang++ -shared -o qdi-core/libqdi_mock.so -Iqdi-core/include qdi-core/src/qdi_mock.cpp -std=c++17 -fPIC && pip install fastapi uvicorn httpx aws-lambda-powertools aws-xray-sdk",
 
-  // Launch the backend API server and a static file web server for index.html (bound to all interfaces)
-  "postStartCommand": "nohup python qdi-core/python/qdi_demo_server.py > server.log 2>&1 & nohup python -m http.server 3000 --bind 0.0.0.0 --directory qdi-core/python > web.log 2>&1 &",
+  // Launch the backend API server and static web server using start.sh (non-blocking)
+  "postStartCommand": "bash .devcontainer/start.sh",
 
   // Configure port forwarding
   "forwardPorts": [8000, 3000],
