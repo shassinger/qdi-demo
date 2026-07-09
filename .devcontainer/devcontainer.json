@@ -1,0 +1,26 @@
+{
+  "name": "QDI Sandbox",
+  "image": "mcr.microsoft.com/devcontainers/python:3.10-bullseye",
+  
+  // Set up development tools and compile QDI mock library inside the container
+  "postCreateCommand": "apt-get update && apt-get install -y clang cmake && clang++ -shared -o qdi-core/libqdi_mock.so -Iqdi-core/include qdi-core/src/qdi_mock.cpp -std=c++17 -fPIC && pip install fastapi uvicorn httpx aws-lambda-powertools aws-xray-sdk",
+
+  // Automatically launch the QDI Demo FastAPI server in the background
+  "postStartCommand": "nohup python qdi-core/python/qdi_demo_server.py > server.log 2>&1 &",
+
+  // Configure port forwarding so the browser can reach the backend server
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "QDI Backend API",
+      "onAutoForward": "silent"
+    }
+  },
+
+  // Launch a simple static file server for the browser client page
+  "customizations": {
+    "codespaces": {
+      "openFiles": ["qdi-core/python/index.html"]
+    }
+  }
+}

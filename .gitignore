@@ -1,0 +1,16 @@
+# Ignore virtual env
+.venv/
+
+# Ignore sub-repositories (except the files we created/edited)
+/amazon-braket-qdmi-device
+/oqtopus-cloud
+/qBraid
+
+# Build artifacts
+build/
+*.so
+*.dylib
+*.o
+*.log
+__pycache__/
+.DS_Store

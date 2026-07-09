@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Device Interface (QDI) Control Panel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #090b11 0%, #111424 50%, #1a102c 100%);
+            --glass-bg: rgba(255, 255, 255, 0.02);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-border-focus: rgba(168, 85, 247, 0.4);
+            --accent-purple: #a855f7;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-cyan: #06b6d4;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        header {
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--glass-border);
+            background: rgba(9, 11, 17, 0.5);
+            backdrop-filter: blur(10px);
+        }
+
+        .logo-section h1 {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(90deg, #3b82f6, #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo-section p {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .server-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 6px 12px;
+            border-radius: 20px;
+            border: 1px solid var(--glass-border);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--accent-red);
+            box-shadow: 0 0 10px var(--accent-red);
+            transition: all 0.3s ease;
+        }
+
+        .status-dot.online {
+            background-color: var(--accent-green);
+            box-shadow: 0 0 10px var(--accent-green);
+        }
+
+        .main-container {
+            display: grid;
+            grid-template-columns: 340px 1fr 420px;
+            gap: 20px;
+            padding: 20px;
+            flex-grow: 1;
+            width: 100%;
+            max-width: 100vw;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 14px;
+            padding: 20px;
+            backdrop-filter: blur(12px);
+            transition: border-color 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+        }
+
+        .btn-outline {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            color: var(--text-primary);
+        }
+
+        .btn-outline:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: none;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+
+        .input-group label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input-field {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 10px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 13px;
+            transition: all 0.3s ease;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: var(--glass-border-focus);
+        }
+
+        .device-details {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            font-size: 13px;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            padding-bottom: 6px;
+        }
+
+        .detail-row span:first-child {
+            color: var(--text-secondary);
+        }
+
+        .qubit-grid {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin-top: 14px;
+            background: rgba(0,0,0,0.15);
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .qubit-node {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+            background: rgba(255,255,255,0.02);
+            color: var(--text-secondary);
+            transition: all 0.5s ease;
+        }
+
+        .qubit-node.active {
+            border-color: var(--accent-blue);
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--accent-blue);
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.25);
+        }
+
+        .workspace {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .editor-container {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            min-height: 380px;
+        }
+
+        .editor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(9, 11, 17, 0.4);
+            border: 1px solid var(--glass-border);
+            border-bottom: none;
+            padding: 10px 16px;
+            border-radius: 10px 10px 0 0;
+        }
+
+        .template-selector {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            color: var(--text-primary);
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-family: inherit;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .code-editor {
+            flex-grow: 1;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--glass-border);
+            border-radius: 0 0 10px 10px;
+            padding: 16px;
+            color: #38bdf8;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            resize: none;
+            outline: none;
+            width: 100%;
+        }
+
+        .code-editor:focus {
+            border-color: var(--glass-border-focus);
+        }
+
+        .execution-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .progress-bar-container {
+            flex-grow: 1;
+            background: rgba(255, 255, 255, 0.05);
+            height: 10px;
+            border-radius: 5px;
+            border: 1px solid var(--glass-border);
+            overflow: hidden;
+            display: none;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+            transition: width 0.3s ease;
+        }
+
+        .console-output {
+            background: #050508;
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            padding: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: #cbd5e1;
+            min-height: 80px;
+            max-height: 140px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        .results-section {
+            display: none;
+            margin-top: 14px;
+        }
+
+        .histogram {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 14px;
+        }
+
+        .histogram-bar-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .bar-label {
+            font-family: 'JetBrains Mono', monospace;
+            width: 80px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .bar-wrapper {
+            flex-grow: 1;
+            background: rgba(255, 255, 255, 0.03);
+            height: 24px;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, rgba(59, 130, 246, 0.3), rgba(168, 85, 247, 0.6));
+            border-right: 2px solid var(--accent-purple);
+            width: 0%;
+            transition: width 0.8s cubic-bezier(0.1, 0.8, 0.3, 1);
+            display: flex;
+            align-items: center;
+            padding-left: 10px;
+            font-size: 11px;
+            font-weight: 600;
+            color: white;
+        }
+
+        .bar-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            font-size: 12px;
+            width: 50px;
+            text-align: right;
+        }
+
+        /* QDI X-Ray Console CSS */
+        .xray-panel {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            max-height: calc(100vh - 120px);
+        }
+
+        .xray-log-container {
+            flex-grow: 1;
+            background: #020204;
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            padding: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .xray-log-entry {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .xray-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+        }
+
+        .xray-method-post {
+            color: var(--accent-purple);
+        }
+
+        .xray-method-get {
+            color: var(--accent-blue);
+        }
+
+        .xray-url {
+            color: var(--text-primary);
+            word-break: break-all;
+        }
+
+        .xray-status {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+        }
+
+        .xray-status.error {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--accent-red);
+        }
+
+        .xray-body-label {
+            color: var(--text-secondary);
+            font-size: 10px;
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+
+        .xray-json {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 6px;
+            padding: 8px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: var(--accent-cyan);
+            max-height: 150px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo-section">
+            <h1>Quantum Device Interface (QDI)</h1>
+            <p>Universal Localhost Verification Console</p>
+        </div>
+        <div class="server-status">
+            <div id="statusDot" class="status-dot"></div>
+            <span id="statusText">Server Offline</span>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <div class="sidebar">
+            <!-- Discover Card -->
+            <div class="card">
+                <div class="card-title">
+                    <span>1. Discover Device</span>
+                    <button class="btn btn-outline" onclick="discoverDevice()">Query</button>
+                </div>
+                <div class="device-details" id="deviceDetails">
+                    <p style="color: var(--text-secondary); text-align: center; padding: 12px;">Query to discover qubit properties.</p>
+                </div>
+                <div class="qubit-grid" id="qubitGrid">
+                    <div class="qubit-node" id="q0">0</div>
+                    <div class="qubit-node" id="q1">1</div>
+                    <div class="qubit-node" id="q2">2</div>
+                    <div class="qubit-node" id="q3">3</div>
+                    <div class="qubit-node" id="q4">4</div>
+                </div>
+            </div>
+
+            <!-- Authentication Card -->
+            <div class="card">
+                <div class="card-title">2. Authenticate Session</div>
+                <div class="input-group">
+                    <label for="authToken">QDI Auth Token</label>
+                    <input type="text" id="authToken" class="input-field" value="valid-token" placeholder="Enter session token">
+                </div>
+                <button class="btn" style="width: 100%;" onclick="authenticateSession()">Establish Trust</button>
+            </div>
+        </div>
+
+        <div class="workspace">
+            <!-- Program Execution Card -->
+            <div class="card editor-container">
+                <div class="editor-header">
+                    <span style="font-weight: 600;">3. QASM Program Payload</span>
+                    <select class="template-selector" id="templateSelector" onchange="loadTemplate(this.value)">
+                        <option value="bell">Bell State (2 Qubits)</option>
+                        <option value="ghz">GHZ State (3 Qubits)</option>
+                        <option value="hadamard">Hadamard (1 Qubit)</option>
+                    </select>
+                </div>
+                <textarea id="codeEditor" class="code-editor" spellcheck="false"></textarea>
+                
+                <div class="execution-row" style="margin-top: 14px;">
+                    <div class="input-group" style="margin-bottom: 0; flex-direction: row; align-items: center; gap: 12px;">
+                        <label for="shotsInput" style="margin-bottom: 0;">Shots</label>
+                        <input type="number" id="shotsInput" class="input-field" value="1000" style="width: 100px; padding: 8px;">
+                    </div>
+                    <div class="progress-bar-container" id="progressBarContainer">
+                        <div class="progress-bar" id="progressBar"></div>
+                    </div>
+                    <button class="btn" id="submitBtn" onclick="submitTask()">Send Payload</button>
+                </div>
+            </div>
+
+            <!-- Log Output -->
+            <div class="card">
+                <div class="card-title">Execution Logs</div>
+                <div class="console-output" id="consoleOutput">Initializing console... Standing by.</div>
+                
+                <!-- Results Visualization -->
+                <div class="results-section" id="resultsSection">
+                    <h3 style="font-size: 14px; font-weight: 600; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 12px; margin-top: 12px;">Measurement Frequencies (Receive Result)</h3>
+                    <div class="histogram" id="histogram"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- QDI X-Ray Inspector Panel -->
+        <div class="card xray-panel">
+            <div class="card-title">
+                <span>QDI X-Ray Payload Inspector</span>
+                <button class="btn btn-outline" style="padding: 4px 8px; font-size: 10px;" onclick="clearXRay()">Clear</button>
+            </div>
+            <div class="xray-log-container" id="xrayLog">
+                <p style="color: var(--text-secondary); text-align: center; margin: auto 0;">No protocol interactions captured yet.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Dynamically resolve Codespace or local API URL
+        const codespaceName = window.location.hostname.split('-')[0];
+        const API_URL = window.location.hostname.includes('github.dev') 
+            ? `https://${codespaceName}-8000.app.github.dev` 
+            : "http://127.0.0.1:8000";
+        
+        const templates = {
+            bell: `OPENQASM 3.0;\ninclude "stdgates.inc";\n\nqubit[2] q;\nbit[2] c;\n\nh q[0];\ncx q[0], q[1];\n\nc = measure q;`,
+            ghz: `OPENQASM 3.0;\ninclude "stdgates.inc";\n\nqubit[3] q;\nbit[3] c;\n\nh q[0];\ncx q[0], q[1];\ncx q[1], q[2];\n\nc = measure q;`,
+            hadamard: `OPENQASM 3.0;\ninclude "stdgates.inc";\n\nqubit[1] q;\nbit[1] c;\n\nh q[0];\n\nc = measure q;`
+        };
+
+        const loadedCircuits = {};
+
+        function loadTemplate(name) {
+            if (templates[name]) {
+                document.getElementById("codeEditor").value = templates[name];
+            } else if (loadedCircuits[name]) {
+                document.getElementById("codeEditor").value = loadedCircuits[name];
+            }
+        }
+
+        // Auto load bell template at start
+        loadTemplate("bell");
+
+        // Logger helper
+        function log(message, type = "info") {
+            const consoleBox = document.getElementById("consoleOutput");
+            const timestamp = new Date().toLocaleTimeString();
+            let prefix = `[${timestamp}] `;
+            if (type === "error") prefix += "❌ ERROR: ";
+            else if (type === "success") prefix += "✔ SUCCESS: ";
+            else prefix += "ℹ INFO: ";
+            
+            consoleBox.innerHTML += `\n${prefix}${message}`;
+            consoleBox.scrollTop = consoleBox.scrollHeight;
+        }
+
+        // X-Ray logger helper
+        function logXRay(method, url, requestData, responseData, statusCode) {
+            const container = document.getElementById("xrayLog");
+            
+            // Clear default message if first log
+            if (container.querySelector("p")) {
+                container.innerHTML = "";
+            }
+
+            const timestamp = new Date().toLocaleTimeString();
+            const methodClass = method === "POST" ? "xray-method-post" : "xray-method-get";
+            const statusClass = statusCode >= 400 ? "xray-status error" : "xray-status";
+
+            const logEntry = document.createElement("div");
+            logEntry.className = "xray-log-entry";
+            
+            let reqJson = requestData ? JSON.stringify(requestData, null, 2) : "NONE";
+            let resJson = responseData ? JSON.stringify(responseData, null, 2) : "NONE";
+
+            logEntry.innerHTML = `
+                <div class="xray-header">
+                    <span>
+                        <span class="${methodClass}">${method}</span> 
+                        <span class="xray-url">${url}</span>
+                    </span>
+                    <span class="${statusClass}">${statusCode}</span>
+                </div>
+                <div style="font-size: 10px; color: var(--text-secondary); text-align: right;">${timestamp}</div>
+                <div class="xray-body-label">Request Body</div>
+                <pre class="xray-json">${reqJson}</pre>
+                <div class="xray-body-label">Response Body</div>
+                <pre class="xray-json">${resJson}</pre>
+            `;
+
+            container.appendChild(logEntry);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function clearXRay() {
+            document.getElementById("xrayLog").innerHTML = `<p style="color: var(--text-secondary); text-align: center; margin: auto 0;">No protocol interactions captured yet.</p>`;
+        }
+
+        let circuitsLoaded = false;
+
+        async function loadPNNLCircuits() {
+            try {
+                const response = await fetch(`${API_URL}/qdi/v1/circuits`);
+                if (!response.ok) return;
+                const data = await response.json();
+                
+                const selector = document.getElementById("templateSelector");
+                
+                const optGroup = document.createElement("optgroup");
+                optGroup.label = "PNNL QASMBench (small)";
+                
+                for (const [name, content] of Object.entries(data)) {
+                    loadedCircuits[name] = content;
+                    
+                    const opt = document.createElement("option");
+                    opt.value = name;
+                    let label = name.split("_").map(w => w.toUpperCase()).join(" ");
+                    if (name.includes("_n")) {
+                        const parts = name.split("_n");
+                        label = `${parts[0].toUpperCase()} (${parts[1]} Qubits)`;
+                    }
+                    opt.textContent = `${label} (PNNL)`;
+                    optGroup.appendChild(opt);
+                }
+                selector.appendChild(optGroup);
+                log("PNNL QASMBench circuits library fetched dynamically!", "success");
+            } catch (e) {
+                log("Failed to load PNNL QASMBench circuits dynamically: " + e.message, "info");
+            }
+        }
+
+        // Ping FastAPI backend to check connection
+        async function checkServerConnection() {
+            const dot = document.getElementById("statusDot");
+            const text = document.getElementById("statusText");
+            try {
+                const response = await fetch(`${API_URL}/qdi/v1/devices/mock/discover`);
+                if (response.ok) {
+                    dot.className = "status-dot online";
+                    text.innerText = "Server Online";
+                    if (!circuitsLoaded) {
+                        circuitsLoaded = true;
+                        loadPNNLCircuits();
+                    }
+                } else {
+                    throw new Error();
+                }
+            } catch (e) {
+                dot.className = "status-dot";
+                text.innerText = "Server Offline";
+            }
+        }
+
+        // Ping regularly
+        setInterval(checkServerConnection, 3000);
+        checkServerConnection();
+
+        // QDI Discover
+        async function discoverDevice() {
+            log("Executing QDI Discover...");
+            const url = "/qdi/v1/devices/mock/discover";
+            try {
+                const response = await fetch(`${API_URL}${url}`);
+                const data = await response.json();
+                
+                logXRay("GET", url, null, data, response.status);
+
+                if (!response.ok) throw new Error("Discover call failed.");
+                
+                log(`Discover succeeded. Found Device ID: "${data.device_id}"`, "success");
+                
+                // Populate UI
+                const detailsBox = document.getElementById("deviceDetails");
+                detailsBox.innerHTML = `
+                    <div class="detail-row"><span>Device ID</span><span>${data.device_id}</span></div>
+                    <div class="detail-row"><span>Qubits</span><span>${data.num_qubits}</span></div>
+                    <div class="detail-row"><span>Task Formats</span><span>${data.supported_task_types.join(", ")}</span></div>
+                    <div class="detail-row"><span>Supports Estimation</span><span>${data.supports_estimation}</span></div>
+                `;
+
+                // Highlight active qubits in grid representation
+                for (let i = 0; i < 5; i++) {
+                    const node = document.getElementById(`q${i}`);
+                    // Highlight first qubits up to the device limits
+                    if (i < 5) {
+                        node.classList.add("active");
+                    }
+                }
+            } catch (err) {
+                log(err.message, "error");
+            }
+        }
+
+        // QDI Authenticate
+        async function authenticateSession() {
+            const token = document.getElementById("authToken").value;
+            const url = "/qdi/v1/devices/mock/authenticate";
+            const reqBody = { token: token };
+            
+            log(`Initiating QDI Authenticate with token "${token}"...`);
+            try {
+                const response = await fetch(`${API_URL}${url}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(reqBody)
+                });
+                
+                const data = await response.json();
+                logXRay("POST", url, reqBody, data, response.status);
+
+                if (!response.ok) throw new Error("Authentication rejected (unauthorized).");
+                log("Trust established with the device! Handshake completed.", "success");
+            } catch (err) {
+                log(err.message, "error");
+            }
+        }
+
+        // QDI Submit & Poll Loop
+        async function submitTask() {
+            const payload = document.getElementById("codeEditor").value;
+            const shots = parseInt(document.getElementById("shotsInput").value);
+            const url = "/qdi/v1/devices/mock/tasks";
+            const reqBody = {
+                task_payload: payload,
+                task_type: "openqasm3",
+                shots: shots
+            };
+
+            log("Submitting payload via QDI Send...");
+            
+            const submitBtn = document.getElementById("submitBtn");
+            const progressContainer = document.getElementById("progressBarContainer");
+            const progressBar = document.getElementById("progressBar");
+            const resultsSection = document.getElementById("resultsSection");
+
+            submitBtn.disabled = true;
+            progressContainer.style.display = "block";
+            progressBar.style.width = "0%";
+            resultsSection.style.display = "none";
+
+            try {
+                const response = await fetch(`${API_URL}${url}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(reqBody)
+                });
+
+                const data = await response.json();
+                logXRay("POST", url, reqBody, data, response.status);
+
+                if (response.status === 401) {
+                    throw new Error("Submit rejected: 401 Unauthorized. Perform Step 2 first.");
+                } else if (!response.ok) {
+                    throw new Error("Task submission failed.");
+                }
+
+                const taskId = data.task_id;
+                log(`Task successfully queued! QDI Task ID: "${taskId}"`, "success");
+                
+                // Start status monitor polling loop
+                pollTaskStatus(taskId);
+
+            } catch (err) {
+                log(err.message, "error");
+                submitBtn.disabled = false;
+                progressContainer.style.display = "none";
+            }
+        }
+
+        // QDI Monitor Polling
+        async function pollTaskStatus(taskId) {
+            const progressBar = document.getElementById("progressBar");
+            const submitBtn = document.getElementById("submitBtn");
+            const url = `/qdi/v1/devices/mock/tasks/${taskId}/status`;
+            
+            let interval = setInterval(async () => {
+                try {
+                    const response = await fetch(`${API_URL}${url}`);
+                    const data = await response.json();
+                    
+                    logXRay("GET", `/qdi/v1/devices/mock/tasks/.../status`, null, data, response.status);
+
+                    if (!response.ok) throw new Error("Status query failed.");
+                    
+                    log(`Monitor Task: "${taskId}" is currently in state [${data.status}] (Queue pos: ${data.advisory_metadata.queue_position})`);
+                    
+                    if (data.status === "QUEUED") {
+                        progressBar.style.width = "30%";
+                    } else if (data.status === "EXECUTING") {
+                        progressBar.style.width = "65%";
+                    } else if (data.status === "COMPLETED") {
+                        progressBar.style.width = "100%";
+                        clearInterval(interval);
+                        log("Task execution finished successfully!", "success");
+                        // Fetch Results
+                        fetchResults(taskId);
+                    } else if (data.status === "FAULTED" || data.status === "CANCELLED") {
+                        progressBar.style.width = "0%";
+                        clearInterval(interval);
+                        throw new Error(`Task terminal failure: state is [${data.status}]`);
+                    }
+                } catch (err) {
+                    log(err.message, "error");
+                    clearInterval(interval);
+                    submitBtn.disabled = false;
+                }
+            }, 1000);
+        }
+
+        // QDI Receive Results
+        async function fetchResults(taskId) {
+            log("Querying QDI Receive for counts result...");
+            const url = `/qdi/v1/devices/mock/tasks/${taskId}/results`;
+            const submitBtn = document.getElementById("submitBtn");
+            
+            try {
+                const response = await fetch(`${API_URL}${url}`);
+                const data = await response.json();
+                
+                logXRay("GET", `/qdi/v1/devices/mock/tasks/.../results`, null, data, response.status);
+
+                if (!response.ok) throw new Error("Retrieve results failed.");
+                
+                log("Received counts payload successfully!", "success");
+                
+                // Display results section and render histogram
+                const resultsSection = document.getElementById("resultsSection");
+                resultsSection.style.display = "block";
+                
+                renderHistogram(data.result);
+                
+            } catch (err) {
+                log(err.message, "error");
+            } finally {
+                submitBtn.disabled = false;
+            }
+        }
+
+        // Custom chart renderer
+        function renderHistogram(counts) {
+            const histBox = document.getElementById("histogram");
+            histBox.innerHTML = "";
+            
+            const totalShots = Object.values(counts).reduce((a, b) => a + b, 0);
+            
+            for (const [state, value] of Object.entries(counts)) {
+                const pct = ((value / totalShots) * 100).toFixed(1);
+                
+                const row = document.createElement("div");
+                row.className = "histogram-bar-container";
+                row.innerHTML = `
+                    <div class="bar-label">|${state}⟩</div>
+                    <div class="bar-wrapper">
+                        <div class="bar-fill" style="width: 0%;">${pct}%</div>
+                    </div>
+                    <div class="bar-value">${value}</div>
+                `;
+                histBox.appendChild(row);
+                
+                // Trigger bar width animation
+                setTimeout(() => {
+                    row.querySelector(".bar-fill").style.width = `${pct}%`;
+                }, 100);
+            }
+        }
+    </script>
+</body>
+</html>
