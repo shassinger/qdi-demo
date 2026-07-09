@@ -523,6 +523,7 @@
                         <option value="bell">Bell State (2 Qubits)</option>
                         <option value="ghz">GHZ State (3 Qubits)</option>
                         <option value="hadamard">Hadamard (1 Qubit)</option>
+                        <option value="qir_bell">QIR Bell State (2 Qubits) (LLVM IR)</option>
                     </select>
                 </div>
                 <textarea id="codeEditor" class="code-editor" spellcheck="false"></textarea>
@@ -573,7 +574,8 @@
         const templates = {
             bell: `OPENQASM 3.0;\ninclude "stdgates.inc";\n\nqubit[2] q;\nbit[2] c;\n\nh q[0];\ncx q[0], q[1];\n\nc = measure q;`,
             ghz: `OPENQASM 3.0;\ninclude "stdgates.inc";\n\nqubit[3] q;\nbit[3] c;\n\nh q[0];\ncx q[0], q[1];\ncx q[1], q[2];\n\nc = measure q;`,
-            hadamard: `OPENQASM 3.0;\ninclude "stdgates.inc";\n\nqubit[1] q;\nbit[1] c;\n\nh q[0];\n\nc = measure q;`
+            hadamard: `OPENQASM 3.0;\ninclude "stdgates.inc";\n\nqubit[1] q;\nbit[1] c;\n\nh q[0];\n\nc = measure q;`,
+            qir_bell: `; ModuleID = 'LLVMDialectModule'\nsource_filename = "LLVMDialectModule"\n\n%Qubit = type opaque\n%Result = type opaque\n\ndefine void @main() {\n  tail call void @__quantum__qis__h__body(%Qubit* null)\n  tail call void @__quantum__qis__cnot__body(%Qubit* null, %Qubit* nonnull inttoptr (i64 1 to %Qubit*))\n  tail call void @__quantum__qis__mz__body(%Qubit* null, %Result* null)\n  tail call void @__quantum__qis__mz__body(%Qubit* nonnull inttoptr (i64 1 to %Qubit*), %Result* nonnull inttoptr (i64 1 to %Result*))\n  ret void\n}`
         };
 
         const loadedCircuits = {};
@@ -768,9 +770,10 @@
             const payload = document.getElementById("codeEditor").value;
             const shots = parseInt(document.getElementById("shotsInput").value);
             const url = "/qdi/v1/devices/mock/tasks";
+            const isQir = payload.includes("; ModuleID") || payload.includes("__quantum__");
             const reqBody = {
                 task_payload: payload,
-                task_type: "openqasm3",
+                task_type: isQir ? "qir" : "openqasm3",
                 shots: shots
             };
 

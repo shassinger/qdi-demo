@@ -72,7 +72,7 @@ qdi_status qdi_discover(
         "{"
         "\"device_id\": \"mock_qdi_qubit_v1\","
         "\"supported_auth_methods\": [\"token\"],"
-        "\"supported_task_types\": [\"openqasm3\", \"openqasm2\"],"
+        "\"supported_task_types\": [\"openqasm3\", \"openqasm2\", \"qir\"],"
         "\"is_ready\": true,"
         "\"supports_estimation\": true,"
         "\"num_qubits\": 32"
