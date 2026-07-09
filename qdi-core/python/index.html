@@ -566,9 +566,8 @@
 
     <script>
         // Dynamically resolve Codespace or local API URL
-        const codespaceName = window.location.hostname.split('-')[0];
         const API_URL = window.location.hostname.includes('github.dev') 
-            ? `https://${codespaceName}-8000.app.github.dev` 
+            ? window.location.origin.replace('-3000', '-8000')
             : "http://127.0.0.1:8000";
         
         const templates = {
