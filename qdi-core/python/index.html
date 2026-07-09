@@ -645,7 +645,7 @@
 
             <div class="modal-actions">
                 <button class="btn btn-outline" type="button" onclick="resetDeviceConfigForm()">Reload</button>
-                <button class="btn" type="button" onclick="applyDeviceConfig()">Apply Config</button>
+                <button class="btn" id="applyDeviceConfigBtn" type="button" onclick="applyDeviceConfig()" disabled>Apply Config</button>
             </div>
         </div>
     </div>
@@ -735,8 +735,12 @@
             const apiOverride = params.get("api");
             if (apiOverride) return apiOverride.replace(/\/$/, "");
 
-            if (window.location.hostname.includes("github.dev")) {
-                return window.location.origin.replace("-3000", "-8000");
+            if (window.location.hostname.includes("github")) {
+                const apiHost = window.location.hostname.replace(/-\d+(\.)/, "-8000$1");
+                if (apiHost !== window.location.hostname) {
+                    return `${window.location.protocol}//${apiHost}`;
+                }
+                return window.location.origin.replace("-3000", "-8000").replace(":3000", ":8000");
             }
 
             if (window.location.protocol === "http:" || window.location.protocol === "https:") {
@@ -855,12 +859,30 @@
             }
         }
 
+        function renderDeviceSummary(data, stateLabel = "Configured") {
+            const detailsBox = document.getElementById("deviceDetails");
+            detailsBox.innerHTML = `
+                ${data.display_name ? `<div class="detail-row"><span>Name</span><span>${data.display_name}</span></div>` : ""}
+                <div class="detail-row"><span>Device ID</span><span>${data.device_id}</span></div>
+                <div class="detail-row"><span>Qubits</span><span>${data.num_qubits}</span></div>
+                ${data.max_shots ? `<div class="detail-row"><span>Max Shots</span><span>${data.max_shots}</span></div>` : ""}
+                <div class="detail-row"><span>Task Formats</span><span>${data.supported_task_types.join(", ")}</span></div>
+                <div class="detail-row"><span>Supports Estimation</span><span>${data.supports_estimation}</span></div>
+                <div class="detail-row"><span>State</span><span>${stateLabel}</span></div>
+            `;
+            renderQubitGrid(data.num_qubits);
+        }
+
         function resetProtocolUi() {
             qdiState.discovered = false;
             qdiState.authenticated = false;
             qdiState.descriptor = null;
-            document.getElementById("deviceDetails").innerHTML = `<p style="color: var(--text-secondary); text-align: center; padding: 12px;">Query to discover qubit properties.</p>`;
-            document.getElementById("qubitGrid").innerHTML = "";
+            if (qdiState.deviceConfig) {
+                renderDeviceSummary(qdiState.deviceConfig, "Configured");
+            } else {
+                document.getElementById("deviceDetails").innerHTML = `<p style="color: var(--text-secondary); text-align: center; padding: 12px;">Query to discover qubit properties.</p>`;
+                document.getElementById("qubitGrid").innerHTML = "";
+            }
             document.getElementById("resultsSection").style.display = "none";
             document.getElementById("progressBarContainer").style.display = "none";
             document.getElementById("progressBar").style.width = "0%";
@@ -881,6 +903,7 @@
             logXRay("GET", url, null, data, response.status);
             if (!response.ok) throw new Error(detailMessage(data, "Device config fetch failed."));
             qdiState.deviceConfig = data;
+            document.getElementById("applyDeviceConfigBtn").disabled = false;
             return data;
         }
 
@@ -935,6 +958,7 @@
         async function openDeviceConfigModal() {
             document.getElementById("deviceConfigModal").classList.add("open");
             try {
+                document.getElementById("applyDeviceConfigBtn").disabled = true;
                 const config = await fetchDeviceConfig();
                 populateDeviceConfigForm(config);
             } catch (err) {
@@ -985,6 +1009,7 @@
         }
 
         let circuitsLoaded = false;
+        let startupConfigLoaded = false;
 
         async function loadPNNLCircuits() {
             try {
@@ -1026,6 +1051,16 @@
                 if (response.ok) {
                     dot.className = "status-dot online";
                     text.innerText = "Server Online";
+                    if (!startupConfigLoaded) {
+                        startupConfigLoaded = true;
+                        try {
+                            const config = await fetchDeviceConfig();
+                            renderDeviceSummary(config, "Configured");
+                        } catch (err) {
+                            startupConfigLoaded = false;
+                            log(err.message, "error");
+                        }
+                    }
                     if (!circuitsLoaded) {
                         circuitsLoaded = true;
                         loadPNNLCircuits();
@@ -1060,18 +1095,7 @@
                 
                 log(`Discover succeeded. Found Device ID: "${data.device_id}"`, "success");
                 
-                // Populate UI
-                const detailsBox = document.getElementById("deviceDetails");
-                detailsBox.innerHTML = `
-                    ${data.display_name ? `<div class="detail-row"><span>Name</span><span>${data.display_name}</span></div>` : ""}
-                    <div class="detail-row"><span>Device ID</span><span>${data.device_id}</span></div>
-                    <div class="detail-row"><span>Qubits</span><span>${data.num_qubits}</span></div>
-                    ${data.max_shots ? `<div class="detail-row"><span>Max Shots</span><span>${data.max_shots}</span></div>` : ""}
-                    <div class="detail-row"><span>Task Formats</span><span>${data.supported_task_types.join(", ")}</span></div>
-                    <div class="detail-row"><span>Supports Estimation</span><span>${data.supports_estimation}</span></div>
-                `;
-
-                renderQubitGrid(data.num_qubits);
+                renderDeviceSummary(data, "Discovered");
             } catch (err) {
                 log(err.message, "error");
             }
