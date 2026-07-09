@@ -1,14 +1,8 @@
 {
   "name": "QDI Sandbox",
   "image": "mcr.microsoft.com/devcontainers/python:3.10-bullseye",
-  
-  // Install compiler packages (using sudo). Python pip packages are handled in start.sh to respect active virtualenv.
-  "postCreateCommand": "sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y clang cmake",
-
-  // Launch the backend API server and static web server using start.sh (non-blocking)
+  "postCreateCommand": "python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install fastapi uvicorn httpx qiskit qiskit-aer pyqir",
   "postStartCommand": "bash .devcontainer/start.sh",
-
-  // Configure port forwarding with public visibility to allow cross-origin requests
   "forwardPorts": [8000, 3000],
   "portsAttributes": {
     "8000": {
@@ -22,8 +16,6 @@
       "visibility": "public"
     }
   },
-
-  // Open index.html in the editor panel automatically
   "customizations": {
     "codespaces": {
       "openFiles": ["qdi-core/python/index.html"]
