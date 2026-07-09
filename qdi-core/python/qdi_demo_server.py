@@ -59,25 +59,16 @@ DEFAULT_DEVICE_CONFIG = {
     },
 }
 
-def load_device_config() -> dict:
-    config_path = os.environ.get(
-        "QDI_DEVICE_CONFIG",
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "mock_device_config.json")
-    )
+def normalize_device_config(overrides: dict) -> dict:
     config = DEFAULT_DEVICE_CONFIG.copy()
-
-    if os.path.exists(config_path):
-        with open(config_path, "r", encoding="utf-8") as config_file:
-            loaded_config = json.load(config_file)
-        config.update(loaded_config)
-    else:
-        print(f"Device config not found at {config_path}; using built-in defaults.")
+    config.update(overrides)
 
     config["num_qubits"] = int(config["num_qubits"])
     config["max_shots"] = int(config.get("max_shots", DEFAULT_DEVICE_CONFIG["max_shots"]))
     config["supported_task_types"] = list(config["supported_task_types"])
     config["supported_auth_methods"] = list(config["supported_auth_methods"])
     config["supports_estimation"] = bool(config.get("supports_estimation", False))
+    config["is_ready"] = bool(config.get("is_ready", True))
     estimation_config = DEFAULT_DEVICE_CONFIG["estimation"].copy()
     estimation_config.update(config.get("estimation", {}))
     config["estimation"] = estimation_config
@@ -87,13 +78,27 @@ def load_device_config() -> dict:
     config["task_type_aliases"] = aliases
 
     if config["num_qubits"] < 1:
-        raise RuntimeError("Device config num_qubits must be at least 1.")
+        raise ValueError("Device config num_qubits must be at least 1.")
     if config["max_shots"] < 1:
-        raise RuntimeError("Device config max_shots must be at least 1.")
+        raise ValueError("Device config max_shots must be at least 1.")
     if not config["supported_task_types"]:
-        raise RuntimeError("Device config supported_task_types must not be empty.")
+        raise ValueError("Device config supported_task_types must not be empty.")
 
     return config
+
+def load_device_config() -> dict:
+    config_path = os.environ.get(
+        "QDI_DEVICE_CONFIG",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "mock_device_config.json")
+    )
+    loaded_config = {}
+    if os.path.exists(config_path):
+        with open(config_path, "r", encoding="utf-8") as config_file:
+            loaded_config = json.load(config_file)
+    else:
+        print(f"Device config not found at {config_path}; using built-in defaults.")
+
+    return normalize_device_config(loaded_config)
 
 MOCK_DEVICE_CONFIG = load_device_config()
 
@@ -109,6 +114,11 @@ class EstimateRequest(BaseModel):
     task_payload: str
     task_type: str = "openqasm3"
     shots: int = 100
+
+def reset_runtime_state():
+    session_state["discovered"] = False
+    session_state["authenticated"] = False
+    simulation_results.clear()
 
 def require_discovered():
     if not session_state["discovered"]:
@@ -307,6 +317,25 @@ def simulate_qir(qir_str: str, shots: int = 1000) -> dict:
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/qdi/v1/devices/mock/config")
+def get_device_config():
+    return MOCK_DEVICE_CONFIG
+
+@app.put("/qdi/v1/devices/mock/config")
+def update_device_config(config_update: dict):
+    global MOCK_DEVICE_CONFIG
+    try:
+        MOCK_DEVICE_CONFIG = normalize_device_config(config_update)
+    except (TypeError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    reset_runtime_state()
+    return {
+        "status": "updated",
+        "message": "Mock device config updated. Discovery and authentication state were reset.",
+        "config": MOCK_DEVICE_CONFIG
+    }
 
 @app.get("/qdi/v1/devices/mock/discover")
 def discover():

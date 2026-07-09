@@ -73,6 +73,14 @@
             padding: 6px 12px;
             border-radius: 20px;
             border: 1px solid var(--glass-border);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        .server-status:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.2);
         }
 
         .status-dot {
@@ -477,6 +485,90 @@
             max-height: 150px;
             overflow-y: auto;
         }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(2, 6, 23, 0.72);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            z-index: 50;
+        }
+
+        .modal-backdrop.open {
+            display: flex;
+        }
+
+        .modal-dialog {
+            width: min(720px, 100%);
+            max-height: calc(100vh - 48px);
+            overflow-y: auto;
+            background: #090b11;
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 18px;
+        }
+
+        .modal-header h2 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .modal-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .modal-section {
+            margin-top: 18px;
+            padding-top: 16px;
+            border-top: 1px solid var(--glass-border);
+        }
+
+        .modal-section-title {
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .checkbox-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .checkbox-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 10px;
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--text-primary);
+            font-size: 13px;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
@@ -485,11 +577,78 @@
             <h1>Quantum Device Interface (QDI)</h1>
             <p>Universal Localhost Verification Console</p>
         </div>
-        <div class="server-status">
+        <button class="server-status" type="button" onclick="openDeviceConfigModal()">
             <div id="statusDot" class="status-dot"></div>
             <span id="statusText">Server Offline</span>
-        </div>
+        </button>
     </header>
+
+    <div class="modal-backdrop" id="deviceConfigModal" onclick="handleModalBackdrop(event)">
+        <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="deviceConfigTitle">
+            <div class="modal-header">
+                <h2 id="deviceConfigTitle">Mock Device</h2>
+                <button class="btn btn-outline" type="button" onclick="closeDeviceConfigModal()">Close</button>
+            </div>
+
+            <div class="modal-grid">
+                <div class="input-group">
+                    <label for="configDisplayName">Display Name</label>
+                    <input id="configDisplayName" class="input-field" type="text">
+                </div>
+                <div class="input-group">
+                    <label for="configDeviceId">Device ID</label>
+                    <input id="configDeviceId" class="input-field" type="text">
+                </div>
+                <div class="input-group">
+                    <label for="configNumQubits">Qubits</label>
+                    <input id="configNumQubits" class="input-field" type="number" min="1">
+                </div>
+                <div class="input-group">
+                    <label for="configMaxShots">Max Shots</label>
+                    <input id="configMaxShots" class="input-field" type="number" min="1">
+                </div>
+            </div>
+
+            <div class="modal-section">
+                <div class="modal-section-title">Task Formats</div>
+                <div class="checkbox-row">
+                    <label class="checkbox-pill"><input type="checkbox" class="task-type-checkbox" value="openqasm3"> OpenQASM 3</label>
+                    <label class="checkbox-pill"><input type="checkbox" class="task-type-checkbox" value="openqasm2"> OpenQASM 2</label>
+                    <label class="checkbox-pill"><input type="checkbox" class="task-type-checkbox" value="qir"> QIR</label>
+                </div>
+            </div>
+
+            <div class="modal-section">
+                <div class="modal-section-title">Estimation</div>
+                <div class="checkbox-row" style="margin-bottom: 14px;">
+                    <label class="checkbox-pill"><input type="checkbox" id="configSupportsEstimation"> Enabled</label>
+                </div>
+                <div class="modal-grid">
+                    <div class="input-group">
+                        <label for="configBaseDuration">Base Duration Seconds</label>
+                        <input id="configBaseDuration" class="input-field" type="number" min="0" step="0.001">
+                    </div>
+                    <div class="input-group">
+                        <label for="configShotDuration">Duration Per Shot Seconds</label>
+                        <input id="configShotDuration" class="input-field" type="number" min="0" step="0.00001">
+                    </div>
+                    <div class="input-group">
+                        <label for="configDepthDuration">Duration Per Depth Seconds</label>
+                        <input id="configDepthDuration" class="input-field" type="number" min="0" step="0.001">
+                    </div>
+                    <div class="input-group">
+                        <label for="configShotCost">Cost Per Shot USD</label>
+                        <input id="configShotCost" class="input-field" type="number" min="0" step="0.000001">
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-outline" type="button" onclick="resetDeviceConfigForm()">Reload</button>
+                <button class="btn" type="button" onclick="applyDeviceConfig()">Apply Config</button>
+            </div>
+        </div>
+    </div>
 
     <div class="main-container">
         <div class="sidebar">
@@ -600,7 +759,8 @@
         const qdiState = {
             discovered: false,
             authenticated: false,
-            descriptor: null
+            descriptor: null,
+            deviceConfig: null
         };
 
         function loadTemplate(name) {
@@ -692,6 +852,135 @@
                 node.id = `q${i}`;
                 node.textContent = i;
                 grid.appendChild(node);
+            }
+        }
+
+        function resetProtocolUi() {
+            qdiState.discovered = false;
+            qdiState.authenticated = false;
+            qdiState.descriptor = null;
+            document.getElementById("deviceDetails").innerHTML = `<p style="color: var(--text-secondary); text-align: center; padding: 12px;">Query to discover qubit properties.</p>`;
+            document.getElementById("qubitGrid").innerHTML = "";
+            document.getElementById("resultsSection").style.display = "none";
+            document.getElementById("progressBarContainer").style.display = "none";
+            document.getElementById("progressBar").style.width = "0%";
+        }
+
+        function setNumberValue(id, value) {
+            document.getElementById(id).value = Number(value ?? 0);
+        }
+
+        function readNumberValue(id) {
+            return Number(document.getElementById(id).value);
+        }
+
+        async function fetchDeviceConfig() {
+            const url = "/qdi/v1/devices/mock/config";
+            const response = await fetch(`${API_URL}${url}`);
+            const data = await response.json();
+            logXRay("GET", url, null, data, response.status);
+            if (!response.ok) throw new Error(detailMessage(data, "Device config fetch failed."));
+            qdiState.deviceConfig = data;
+            return data;
+        }
+
+        function populateDeviceConfigForm(config) {
+            document.getElementById("configDisplayName").value = config.display_name || "";
+            document.getElementById("configDeviceId").value = config.device_id || "";
+            setNumberValue("configNumQubits", config.num_qubits);
+            setNumberValue("configMaxShots", config.max_shots);
+            document.getElementById("configSupportsEstimation").checked = Boolean(config.supports_estimation);
+
+            const selectedTypes = new Set(config.supported_task_types || []);
+            document.querySelectorAll(".task-type-checkbox").forEach((checkbox) => {
+                checkbox.checked = selectedTypes.has(checkbox.value);
+            });
+
+            const estimation = config.estimation || {};
+            setNumberValue("configBaseDuration", estimation.base_duration_sec);
+            setNumberValue("configShotDuration", estimation.duration_per_shot_sec);
+            setNumberValue("configDepthDuration", estimation.duration_per_depth_sec);
+            setNumberValue("configShotCost", estimation.cost_per_shot_usd);
+        }
+
+        function collectDeviceConfigForm() {
+            const supportedTaskTypes = Array.from(document.querySelectorAll(".task-type-checkbox"))
+                .filter((checkbox) => checkbox.checked)
+                .map((checkbox) => checkbox.value);
+
+            return {
+                device_id: document.getElementById("configDeviceId").value.trim() || "mock_qdi_qubit_v1",
+                display_name: document.getElementById("configDisplayName").value.trim() || "Mock QDI QPU",
+                supported_auth_methods: ["token"],
+                supported_task_types: supportedTaskTypes,
+                is_ready: true,
+                supports_estimation: document.getElementById("configSupportsEstimation").checked,
+                num_qubits: readNumberValue("configNumQubits"),
+                max_shots: readNumberValue("configMaxShots"),
+                estimation: {
+                    base_duration_sec: readNumberValue("configBaseDuration"),
+                    duration_per_shot_sec: readNumberValue("configShotDuration"),
+                    duration_per_depth_sec: readNumberValue("configDepthDuration"),
+                    cost_per_shot_usd: readNumberValue("configShotCost"),
+                    cost_per_qubit_usd: qdiState.deviceConfig?.estimation?.cost_per_qubit_usd ?? 0
+                },
+                task_type_aliases: qdiState.deviceConfig?.task_type_aliases || {
+                    qasm3: "openqasm3",
+                    qasm2: "openqasm2",
+                    llvm: "qir"
+                }
+            };
+        }
+
+        async function openDeviceConfigModal() {
+            document.getElementById("deviceConfigModal").classList.add("open");
+            try {
+                const config = await fetchDeviceConfig();
+                populateDeviceConfigForm(config);
+            } catch (err) {
+                log(err.message, "error");
+            }
+        }
+
+        function closeDeviceConfigModal() {
+            document.getElementById("deviceConfigModal").classList.remove("open");
+        }
+
+        function handleModalBackdrop(event) {
+            if (event.target.id === "deviceConfigModal") {
+                closeDeviceConfigModal();
+            }
+        }
+
+        async function resetDeviceConfigForm() {
+            try {
+                populateDeviceConfigForm(await fetchDeviceConfig());
+            } catch (err) {
+                log(err.message, "error");
+            }
+        }
+
+        async function applyDeviceConfig() {
+            const url = "/qdi/v1/devices/mock/config";
+            const reqBody = collectDeviceConfigForm();
+
+            try {
+                const response = await fetch(`${API_URL}${url}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(reqBody)
+                });
+
+                const data = await response.json();
+                logXRay("PUT", url, reqBody, data, response.status);
+                if (!response.ok) throw new Error(detailMessage(data, "Device config update failed."));
+
+                qdiState.deviceConfig = data.config;
+                resetProtocolUi();
+                closeDeviceConfigModal();
+                log("Mock device config applied. Run Discover again to start a new session.", "success");
+            } catch (err) {
+                log(err.message, "error");
             }
         }
 

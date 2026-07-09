@@ -114,6 +114,12 @@ The API uses the configured capabilities for `discover`, task-format
 validation, shot-limit validation, qubit-limit validation, and resource
 estimation.
 
+You can also edit the active mock device in the web console. Click the
+**Server Online** control in the upper-right corner to open the mock device
+dialog, change the device shape, and apply the in-memory config. Applying a
+config resets discovery, authentication, and task state; run Discover again to
+start a new session. File-based config remains the boot default.
+
 ---
 
 ## Protocol Execution Guide
