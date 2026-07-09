@@ -3,9 +3,9 @@
 pkill -f qdi_demo_server || true
 pkill -f "http.server 3000" || true
 
-# Ensure dependencies are installed in the running Python environment
+# Ensure dependencies are installed in the running Python environment (using 'python' to respect virtualenv)
 echo "Verifying Python dependencies..."
-python3 -m pip install -q fastapi uvicorn httpx
+python -m pip install -q fastapi uvicorn httpx
 
 # Find an available compiler (g++, clang++, or c++)
 COMPILER=""
@@ -30,10 +30,10 @@ $COMPILER -shared -o qdi-core/libqdi_mock.so -Iqdi-core/include qdi-core/src/qdi
 
 # Start backend API server in background with fully detached streams
 echo "Starting FastAPI Server..."
-nohup python3 qdi-core/python/qdi_demo_server.py < /dev/null > server.log 2>&1 &
+nohup python qdi-core/python/qdi_demo_server.py < /dev/null > server.log 2>&1 &
 
 # Start static web server in background with fully detached streams
 echo "Starting Web Console Server..."
-nohup python3 -m http.server 3000 --bind 0.0.0.0 --directory qdi-core/python < /dev/null > web.log 2>&1 &
+nohup python -m http.server 3000 --bind 0.0.0.0 --directory qdi-core/python < /dev/null > web.log 2>&1 &
 
 echo "QDI sandbox environment initialized successfully."
