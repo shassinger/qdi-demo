@@ -2,8 +2,8 @@
   "name": "QDI Sandbox",
   "image": "mcr.microsoft.com/devcontainers/python:3.10-bullseye",
   
-  // Set up development tools and compile QDI mock library inside the container (using sudo for root commands)
-  "postCreateCommand": "sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y clang cmake && clang++ -shared -o qdi-core/libqdi_mock.so -Iqdi-core/include qdi-core/src/qdi_mock.cpp -std=c++17 -fPIC && pip install fastapi uvicorn httpx aws-lambda-powertools aws-xray-sdk",
+  // Install compiler packages and lightweight Python web dependencies
+  "postCreateCommand": "sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y clang cmake && pip install fastapi uvicorn httpx",
 
   // Launch the backend API server and static web server using start.sh (non-blocking)
   "postStartCommand": "bash .devcontainer/start.sh",
