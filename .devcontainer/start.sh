@@ -69,6 +69,25 @@ wait_for_url() {
     return 1
 }
 
+set_codespace_port_visibility() {
+    if [ -z "${CODESPACE_NAME:-}" ]; then
+        echo "Not running in GitHub Codespaces; skipping port visibility setup."
+        return 0
+    fi
+
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "GitHub CLI not found; set ports 3000 and 8000 public manually if needed."
+        return 0
+    fi
+
+    echo "Setting Codespaces ports 3000 and 8000 to public visibility..."
+    if GH_TOKEN="${GITHUB_TOKEN:-}" gh codespace ports visibility 3000:public 8000:public -c "$CODESPACE_NAME"; then
+        echo "Codespaces port visibility set to public."
+    else
+        echo "Unable to set port visibility automatically; set ports 3000 and 8000 public in the Ports tab."
+    fi
+}
+
 # Start backend API server in background using the explicit virtualenv Python interpreter.
 echo "Starting FastAPI Server..."
 nohup .venv/bin/python -u qdi-core/python/qdi_demo_server.py < /dev/null > server.log 2>&1 &
@@ -83,5 +102,6 @@ echo "$WEB_PID" > web.pid
 
 wait_for_url "QDI Backend API" "http://127.0.0.1:8000/qdi/v1/devices/mock/discover" "$SERVER_PID" "server.log"
 wait_for_url "QDI Web Console" "http://127.0.0.1:3000/" "$WEB_PID" "web.log"
+set_codespace_port_visibility
 
 echo "QDI sandbox environment initialized successfully."
