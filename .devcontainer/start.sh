@@ -16,7 +16,7 @@ fi
 # Ensure pip is upgraded and dependencies are installed
 echo "Verifying Python dependencies..."
 .venv/bin/pip install --upgrade pip
-.venv/bin/pip install fastapi uvicorn httpx qiskit qiskit-aer pyqir
+.venv/bin/pip install fastapi uvicorn httpx qiskit qiskit-aer
 
 # Find an available compiler (g++, clang++, or c++)
 COMPILER=""
