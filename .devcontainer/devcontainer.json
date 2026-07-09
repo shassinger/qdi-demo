@@ -1,7 +1,7 @@
 {
   "name": "QDI Sandbox",
   "image": "mcr.microsoft.com/devcontainers/python:3.10-bullseye",
-  "postCreateCommand": "python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install fastapi uvicorn httpx qiskit qiskit-aer || echo 'resilient_install'",
+  "postCreateCommand": "python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install fastapi uvicorn httpx qiskit qiskit-aer qiskit_qasm3_import || echo 'resilient_install'",
   "postStartCommand": "bash .devcontainer/start.sh",
   "forwardPorts": [8000, 3000],
   "portsAttributes": {
