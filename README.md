@@ -16,15 +16,126 @@ This sandbox compiles the core QDI driver libraries, launches a local FastAPI we
 
 ---
 
-## Quick Start: GitHub Codespaces (Zero Setup)
+## Quick Start: GitHub Codespaces Demo
 
-1. Click the **Open in GitHub Codespaces** button in your repository (or select **Create Codespace** from the Code dropdown).
-2. The environment will automatically:
-   * Build the C++ core library inside the container.
-   * Install python package dependencies (`fastapi`, `uvicorn`, `qiskit`, `qiskit-aer`, `pyqir`).
-   * Start both backend API (Port 8000) and Web Console (Port 3000) servers.
-3. Once the Codespace boots, a notification will pop up. Click **Open in Browser** for **Port 3000** to load the web interface.
-4. On the Ports tab, ensure **Port 8000** visibility is set to **Public** to allow CORS API calls.
+This repository is designed to run as a browser-based demo with no local setup. The Codespace starts two services:
+
+* **Web Console:** port `3000`
+* **QDI Backend API:** port `8000`
+
+### 1. Create the Codespace
+
+1. Open this repository on GitHub.
+2. Click **Code**.
+3. Select the **Codespaces** tab.
+4. Click **Create codespace on main**.
+
+The dev container will automatically:
+
+* Create a Python virtual environment.
+* Install the Python dependencies (`fastapi`, `uvicorn`, `httpx`, `qiskit`, `qiskit-aer`).
+* Compile the C++ mock QDI shared library.
+* Start the FastAPI backend on port `8000`.
+* Start the static web console on port `3000`.
+* Attempt to make ports `3000` and `8000` public so the browser console can call the API.
+
+### 2. Open the Web Console
+
+When the Codespace finishes starting, GitHub should offer to open the forwarded `3000` port. If it does not:
+
+1. Open the **Ports** tab in the Codespace.
+2. Find **QDI Web Console** on port `3000`.
+3. Click the globe/open-browser icon.
+
+You should see the **Quantum Device Interface (QDI) Control Panel**.
+
+### 3. Verify the Backend
+
+The backend root URL may show:
+
+```json
+{"detail":"Not Found"}
+```
+
+That is normal. The API endpoint to test is:
+
+```text
+/qdi/v1/devices/mock/discover
+```
+
+From the Codespace terminal, run:
+
+```bash
+curl -i http://127.0.0.1:8000/qdi/v1/devices/mock/discover
+```
+
+Expected result:
+
+```json
+{
+  "device_id": "mock_qdi_qubit_v1",
+  "supported_auth_methods": ["token"],
+  "supported_task_types": ["openqasm3", "openqasm2", "qir"],
+  "is_ready": true,
+  "supports_estimation": true,
+  "num_qubits": 32
+}
+```
+
+### 4. Check Port Visibility
+
+The browser page on port `3000` calls the backend through the forwarded port `8000`, so both ports must be public.
+
+The startup script tries to set this automatically. If the UI says **Server Offline** or logs `Failed to fetch`:
+
+1. Open the **Ports** tab.
+2. Right-click port `8000`.
+3. Choose **Port Visibility**.
+4. Select **Public**.
+5. Do the same for port `3000` if needed.
+6. Refresh the web console.
+
+If an organization or account policy blocks public forwarded ports, you may need to run the demo from your own account, change the policy, or use authenticated requests to the private forwarded port.
+
+### 5. Run the Demo Flow
+
+1. Click **Query** in **1. Discover Device**.
+2. Click **Establish Trust** in **2. Authenticate**.
+3. Choose a sample circuit, such as **Bell State** or **QIR Bell State**.
+4. Set the number of shots.
+5. Click **Send Payload**.
+6. Watch the status move through `QUEUED`, `EXECUTING`, and `COMPLETED`.
+7. Review the result histogram and the **QDI X-Ray Payload Inspector**.
+
+The X-Ray panel shows the exact REST calls made by the client, including request bodies, response bodies, and status codes. This is the easiest way to explain the QDI protocol flow during a live demo.
+
+### Troubleshooting Codespaces
+
+If the web console does not load, check that the static server is running:
+
+```bash
+curl -i http://127.0.0.1:3000/
+```
+
+If the backend does not answer, check the server logs:
+
+```bash
+tail -100 server.log
+tail -100 web.log
+```
+
+To restart both services manually:
+
+```bash
+bash .devcontainer/start.sh
+```
+
+The startup script writes process IDs to:
+
+```text
+server.pid
+web.pid
+```
 
 ---
 
@@ -45,7 +156,7 @@ Initialize your virtual environment and install dependencies:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install fastapi uvicorn httpx qiskit qiskit-aer pyqir
+pip install fastapi uvicorn httpx qiskit qiskit-aer
 ```
 
 ### 3. Launch the API & Web Servers
