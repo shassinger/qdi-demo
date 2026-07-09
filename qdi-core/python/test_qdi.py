@@ -9,7 +9,7 @@ def test_full_lifecycle():
     descriptor = client.discover()
     print("Descriptor:", descriptor)
     assert descriptor["device_id"] == "mock_qdi_qubit_v1"
-    assert descriptor["num_qubits"] == 5
+    assert descriptor["num_qubits"] == 32
 
     print("Attempting Send (should fail unauthorized)...")
     try:

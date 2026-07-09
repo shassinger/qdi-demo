@@ -146,6 +146,13 @@
             box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
         }
 
+        .btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.55;
+            transform: none;
+            box-shadow: none;
+        }
+
         .btn-outline {
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid var(--glass-border);
@@ -208,7 +215,8 @@
         }
 
         .qubit-grid {
-            display: flex;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(28px, 28px));
             gap: 8px;
             justify-content: center;
             margin-top: 14px;
@@ -495,11 +503,6 @@
                     <p style="color: var(--text-secondary); text-align: center; padding: 12px;">Query to discover qubit properties.</p>
                 </div>
                 <div class="qubit-grid" id="qubitGrid">
-                    <div class="qubit-node" id="q0">0</div>
-                    <div class="qubit-node" id="q1">1</div>
-                    <div class="qubit-node" id="q2">2</div>
-                    <div class="qubit-node" id="q3">3</div>
-                    <div class="qubit-node" id="q4">4</div>
                 </div>
             </div>
 
@@ -518,7 +521,7 @@
             <!-- Program Execution Card -->
             <div class="card editor-container">
                 <div class="editor-header">
-                    <span style="font-weight: 600;">3. QASM Program Payload</span>
+                    <span style="font-weight: 600;">3. Program Payload</span>
                     <select class="template-selector" id="templateSelector" onchange="loadTemplate(this.value)">
                         <option value="bell">Bell State (2 Qubits)</option>
                         <option value="ghz">GHZ State (3 Qubits)</option>
@@ -536,6 +539,7 @@
                     <div class="progress-bar-container" id="progressBarContainer">
                         <div class="progress-bar" id="progressBar"></div>
                     </div>
+                    <button class="btn btn-outline" id="estimateBtn" onclick="estimateTask()">Estimate</button>
                     <button class="btn" id="submitBtn" onclick="submitTask()">Send Payload</button>
                 </div>
             </div>
@@ -567,9 +571,23 @@
 
     <script>
         // Dynamically resolve Codespace or local API URL
-        const API_URL = window.location.hostname.includes('github.dev') 
-            ? window.location.origin.replace('-3000', '-8000')
-            : "http://127.0.0.1:8000";
+        function resolveApiUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const apiOverride = params.get("api");
+            if (apiOverride) return apiOverride.replace(/\/$/, "");
+
+            if (window.location.hostname.includes("github.dev")) {
+                return window.location.origin.replace("-3000", "-8000");
+            }
+
+            if (window.location.protocol === "http:" || window.location.protocol === "https:") {
+                return `${window.location.protocol}//${window.location.hostname}:8000`;
+            }
+
+            return "http://127.0.0.1:8000";
+        }
+
+        const API_URL = resolveApiUrl();
         
         const templates = {
             bell: `OPENQASM 3.0;\ninclude "stdgates.inc";\n\nqubit[2] q;\nbit[2] c;\n\nh q[0];\ncx q[0], q[1];\n\nc = measure q;`,
@@ -579,6 +597,11 @@
         };
 
         const loadedCircuits = {};
+        const qdiState = {
+            discovered: false,
+            authenticated: false,
+            descriptor: null
+        };
 
         function loadTemplate(name) {
             if (templates[name]) {
@@ -646,6 +669,32 @@
             document.getElementById("xrayLog").innerHTML = `<p style="color: var(--text-secondary); text-align: center; margin: auto 0;">No protocol interactions captured yet.</p>`;
         }
 
+        function detailMessage(data, fallback) {
+            if (!data) return fallback;
+            if (typeof data.detail === "string") return data.detail;
+            if (Array.isArray(data.detail)) return data.detail.map(item => item.msg || JSON.stringify(item)).join("; ");
+            return fallback;
+        }
+
+        function detectTaskType(payload) {
+            if (payload.includes("; ModuleID") || payload.includes("__quantum__")) return "qir";
+            if (payload.includes("OPENQASM 2")) return "openqasm2";
+            return "openqasm3";
+        }
+
+        function renderQubitGrid(numQubits) {
+            const grid = document.getElementById("qubitGrid");
+            grid.innerHTML = "";
+
+            for (let i = 0; i < numQubits; i++) {
+                const node = document.createElement("div");
+                node.className = "qubit-node active";
+                node.id = `q${i}`;
+                node.textContent = i;
+                grid.appendChild(node);
+            }
+        }
+
         let circuitsLoaded = false;
 
         async function loadPNNLCircuits() {
@@ -684,7 +733,7 @@
             const dot = document.getElementById("statusDot");
             const text = document.getElementById("statusText");
             try {
-                const response = await fetch(`${API_URL}/qdi/v1/devices/mock/discover`);
+                const response = await fetch(`${API_URL}/health`);
                 if (response.ok) {
                     dot.className = "status-dot online";
                     text.innerText = "Server Online";
@@ -717,6 +766,9 @@
 
                 if (!response.ok) throw new Error("Discover call failed.");
                 
+                qdiState.discovered = true;
+                qdiState.descriptor = data;
+                
                 log(`Discover succeeded. Found Device ID: "${data.device_id}"`, "success");
                 
                 // Populate UI
@@ -728,14 +780,7 @@
                     <div class="detail-row"><span>Supports Estimation</span><span>${data.supports_estimation}</span></div>
                 `;
 
-                // Highlight active qubits in grid representation
-                for (let i = 0; i < 5; i++) {
-                    const node = document.getElementById(`q${i}`);
-                    // Highlight first qubits up to the device limits
-                    if (i < 5) {
-                        node.classList.add("active");
-                    }
-                }
+                renderQubitGrid(data.num_qubits);
             } catch (err) {
                 log(err.message, "error");
             }
@@ -758,10 +803,44 @@
                 const data = await response.json();
                 logXRay("POST", url, reqBody, data, response.status);
 
-                if (!response.ok) throw new Error("Authentication rejected (unauthorized).");
+                if (!response.ok) throw new Error(detailMessage(data, "Authentication rejected."));
+                qdiState.authenticated = true;
                 log("Trust established with the device! Handshake completed.", "success");
             } catch (err) {
+                qdiState.authenticated = false;
                 log(err.message, "error");
+            }
+        }
+
+        async function estimateTask() {
+            const payload = document.getElementById("codeEditor").value;
+            const url = "/qdi/v1/devices/mock/estimate";
+            const reqBody = {
+                task_payload: payload,
+                task_type: detectTaskType(payload)
+            };
+
+            log("Requesting QDI resource estimation...");
+            const estimateBtn = document.getElementById("estimateBtn");
+            estimateBtn.disabled = true;
+
+            try {
+                const response = await fetch(`${API_URL}${url}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(reqBody)
+                });
+
+                const data = await response.json();
+                logXRay("POST", url, reqBody, data, response.status);
+
+                if (!response.ok) throw new Error(detailMessage(data, "Resource estimation failed."));
+
+                log(`Estimate: depth ${data.logical_depth}, duration ${data.shots_duration_sec}s, cost $${data.estimated_cost_usd}`, "success");
+            } catch (err) {
+                log(err.message, "error");
+            } finally {
+                estimateBtn.disabled = false;
             }
         }
 
@@ -770,10 +849,9 @@
             const payload = document.getElementById("codeEditor").value;
             const shots = parseInt(document.getElementById("shotsInput").value);
             const url = "/qdi/v1/devices/mock/tasks";
-            const isQir = payload.includes("; ModuleID") || payload.includes("__quantum__");
             const reqBody = {
                 task_payload: payload,
-                task_type: isQir ? "qir" : "openqasm3",
+                task_type: detectTaskType(payload),
                 shots: shots
             };
 
@@ -799,11 +877,7 @@
                 const data = await response.json();
                 logXRay("POST", url, reqBody, data, response.status);
 
-                if (response.status === 401) {
-                    throw new Error("Submit rejected: 401 Unauthorized. Perform Step 2 first.");
-                } else if (!response.ok) {
-                    throw new Error("Task submission failed.");
-                }
+                if (!response.ok) throw new Error(detailMessage(data, "Task submission failed."));
 
                 const taskId = data.task_id;
                 log(`Task successfully queued! QDI Task ID: "${taskId}"`, "success");

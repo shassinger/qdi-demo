@@ -60,6 +60,34 @@ python -m http.server 3000 --directory qdi-core/python
 
 Open your browser and navigate to `http://127.0.0.1:3000` to interact with the device.
 
+### Hosted Dev Server
+The same launcher used by Codespaces can run on a hosted development machine,
+such as a Mac mini on your LAN:
+
+```bash
+bash .devcontainer/start.sh
+```
+
+By default this starts the API on `0.0.0.0:8000` and the web console on
+`0.0.0.0:3000`. From another machine on the same network, open:
+
+```text
+http://<host-name-or-ip>:3000
+```
+
+The web console automatically calls the API at the same host on port `8000`.
+If you need custom ports:
+
+```bash
+QDI_API_PORT=8003 QDI_WEB_PORT=8004 bash .devcontainer/start.sh
+```
+
+Then open:
+
+```text
+http://<host-name-or-ip>:8004?api=http://<host-name-or-ip>:8003
+```
+
 ---
 
 ## Protocol Execution Guide

@@ -2,7 +2,7 @@ import sys
 import os
 import re
 import uvicorn
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -30,6 +30,19 @@ client = QdiClient()
 
 # In-memory database of simulation results
 simulation_results = {}
+session_state = {
+    "discovered": False,
+    "authenticated": False,
+}
+
+MOCK_DEVICE_CONFIG = {
+    "device_id": "mock_qdi_qubit_v1",
+    "supported_auth_methods": ["token"],
+    "supported_task_types": ["openqasm3", "openqasm2", "qir"],
+    "is_ready": True,
+    "supports_estimation": True,
+    "num_qubits": 32,
+}
 
 class AuthRequest(BaseModel):
     token: str
@@ -38,6 +51,31 @@ class TaskSubmitRequest(BaseModel):
     task_payload: str
     task_type: str = "openqasm3"
     shots: int = 100
+
+class EstimateRequest(BaseModel):
+    task_payload: str
+    task_type: str = "openqasm3"
+
+def require_discovered():
+    if not session_state["discovered"]:
+        raise HTTPException(
+            status_code=409,
+            detail="Discovery required before this operation. Run qdi_discover first."
+        )
+
+def require_authenticated():
+    if not session_state["authenticated"]:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required. Complete the QDI handshake before submitting work."
+        )
+
+def validate_task_type(task_type: str):
+    if task_type not in MOCK_DEVICE_CONFIG["supported_task_types"]:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported task_type '{task_type}'. Supported types: {', '.join(MOCK_DEVICE_CONFIG['supported_task_types'])}."
+        )
 
 def parse_qasm(qasm_str: str) -> QuantumCircuit:
     if "OPENQASM 3" in qasm_str:
@@ -126,23 +164,36 @@ def simulate_qir(qir_str: str, shots: int = 1000) -> dict:
     job = sim.run(qc, shots=shots)
     return job.result().get_counts()
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 @app.get("/qdi/v1/devices/mock/discover")
 def discover():
     try:
-        return client.discover()
+        descriptor = client.discover()
+        descriptor.update(MOCK_DEVICE_CONFIG)
+        session_state["discovered"] = True
+        return descriptor
     except QDIError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/qdi/v1/devices/mock/authenticate")
 def authenticate(req: AuthRequest):
+    require_discovered()
     try:
         client.authenticate({"token": req.token})
+        session_state["authenticated"] = True
         return {"status": "authenticated"}
     except QDIError as e:
+        session_state["authenticated"] = False
         raise HTTPException(status_code=401, detail="Authentication failed (invalid token).")
 
 @app.post("/qdi/v1/devices/mock/tasks")
 def send(req: TaskSubmitRequest):
+    require_discovered()
+    require_authenticated()
+    validate_task_type(req.task_type)
     try:
         # Run C-ABI Send call to get a valid task ID and manage execution state machine
         task_id = client.send(
@@ -173,8 +224,26 @@ def send(req: TaskSubmitRequest):
             raise HTTPException(status_code=401, detail="Authentication required.")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/qdi/v1/devices/mock/estimate")
+def estimate(req: EstimateRequest):
+    require_discovered()
+    require_authenticated()
+    validate_task_type(req.task_type)
+    if not MOCK_DEVICE_CONFIG["supports_estimation"]:
+        raise HTTPException(status_code=501, detail="This device does not support resource estimation.")
+
+    try:
+        return client.estimate_resources(
+            task_payload=req.task_payload.encode("utf-8"),
+            task_type=req.task_type
+        )
+    except QDIError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/qdi/v1/devices/mock/tasks/{task_id}/status")
 def monitor(task_id: str):
+    require_discovered()
+    require_authenticated()
     try:
         status_code, advisory = client.monitor(task_id)
         status_mapping = {
@@ -194,6 +263,8 @@ def monitor(task_id: str):
 
 @app.get("/qdi/v1/devices/mock/tasks/{task_id}/results")
 def receive(task_id: str):
+    require_discovered()
+    require_authenticated()
     try:
         result, result_type = client.receive(task_id)
         
@@ -240,5 +311,7 @@ def get_pnnl_circuits():
     return cached_circuits
 
 if __name__ == "__main__":
-    print("Starting QDI Demo Server on http://0.0.0.0:8000 ...")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    host = os.environ.get("QDI_API_HOST", "0.0.0.0")
+    port = int(os.environ.get("QDI_API_PORT", "8000"))
+    print(f"Starting QDI Demo Server on http://{host}:{port} ...")
+    uvicorn.run(app, host=host, port=port)

@@ -7,6 +7,11 @@ pkill -f "http.server 3000" || true
 WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$WORKSPACE_DIR"
 
+QDI_API_HOST="${QDI_API_HOST:-0.0.0.0}"
+QDI_API_PORT="${QDI_API_PORT:-8000}"
+QDI_WEB_HOST="${QDI_WEB_HOST:-0.0.0.0}"
+QDI_WEB_PORT="${QDI_WEB_PORT:-3000}"
+
 # Ensure virtualenv exists in the workspace
 if [ ! -d ".venv" ]; then
     echo "Creating virtual environment..."
@@ -40,11 +45,11 @@ echo "Compiling QDI C-ABI mock library using $COMPILER..."
 $COMPILER -shared -o qdi-core/libqdi_mock.so -Iqdi-core/include qdi-core/src/qdi_mock.cpp -std=c++17 -fPIC
 
 # Start backend API server in background using the explicit virtualenv Python interpreter
-echo "Starting FastAPI Server..."
-nohup .venv/bin/python qdi-core/python/qdi_demo_server.py < /dev/null > server.log 2>&1 &
+echo "Starting FastAPI Server on ${QDI_API_HOST}:${QDI_API_PORT}..."
+QDI_API_HOST="$QDI_API_HOST" QDI_API_PORT="$QDI_API_PORT" nohup .venv/bin/python qdi-core/python/qdi_demo_server.py < /dev/null > server.log 2>&1 &
 
 # Start static web server in background using the explicit virtualenv Python interpreter
-echo "Starting Web Console Server..."
-nohup .venv/bin/python -m http.server 3000 --bind 0.0.0.0 --directory qdi-core/python < /dev/null > web.log 2>&1 &
+echo "Starting Web Console Server on ${QDI_WEB_HOST}:${QDI_WEB_PORT}..."
+nohup .venv/bin/python -m http.server "$QDI_WEB_PORT" --bind "$QDI_WEB_HOST" --directory qdi-core/python < /dev/null > web.log 2>&1 &
 
 echo "QDI sandbox environment initialized successfully."
