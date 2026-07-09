@@ -5,7 +5,7 @@ pkill -f "http.server 3000" || true
 
 # Ensure dependencies are installed in the running Python environment (using 'python' to respect virtualenv)
 echo "Verifying Python dependencies..."
-python -m pip install -q fastapi uvicorn httpx
+python -m pip install -q fastapi uvicorn httpx qiskit qiskit-aer pyqir
 
 # Find an available compiler (g++, clang++, or c++)
 COMPILER=""

@@ -2,13 +2,13 @@
   "name": "QDI Sandbox",
   "image": "mcr.microsoft.com/devcontainers/python:3.10-bullseye",
   
-  // Install compiler packages and lightweight Python web dependencies
-  "postCreateCommand": "sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y clang cmake && pip install fastapi uvicorn httpx",
+  // Install compiler packages and lightweight Python web dependencies (including simulation packages)
+  "postCreateCommand": "sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y clang cmake && pip install fastapi uvicorn httpx qiskit qiskit-aer pyqir",
 
   // Launch the backend API server and static web server using start.sh (non-blocking)
   "postStartCommand": "bash .devcontainer/start.sh",
 
-  // Configure port forwarding with public visibility to allow cross-origin requests
+  // Configure port forwarding
   "forwardPorts": [8000, 3000],
   "portsAttributes": {
     "8000": {
