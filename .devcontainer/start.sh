@@ -3,6 +3,10 @@
 pkill -f qdi_demo_server || true
 pkill -f "http.server 3000" || true
 
+# Ensure dependencies are installed in the running Python environment
+echo "Verifying Python dependencies..."
+python3 -m pip install -q fastapi uvicorn httpx
+
 # Find an available compiler (g++, clang++, or c++)
 COMPILER=""
 if command -v g++ >/dev/null 2>&1; then
