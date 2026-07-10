@@ -1,241 +1,179 @@
-# QDI Demo Sandbox (Quantum Device Interface)
+# QDI Demo Sandbox
 
-An interactive, containerized developer sandbox designed to demonstrate the **Quantum Device Interface (QDI)** standard. QDI provides a standardized C-ABI interface separating quantum hardware control planes from classical software runtimes.
+An interactive demonstration of the Quantum Device Interface (QDI) standard.
+It combines a compiled C-ABI mock device, a FastAPI wrapper, Qiskit simulation,
+and a browser control panel.
 
-This sandbox compiles the core QDI driver libraries, launches a local FastAPI web server wrapper, and serves an interactive web dashboard for real-time protocol verification.
+The dashboard and API are served by one process on one port. The same commands
+work in a local clone and in GitHub Codespaces.
 
----
+## Run locally
 
-## Key Features
+Requirements:
 
-* **C-ABI Compliance:** Implements standard QDI functions (`qdi_discover`, `qdi_authenticate`, `qdi_send`, `qdi_monitor`, `qdi_receive`) inside a compiled C++ mock driver.
-* **Hybrid Quantum Simulation:** Real backend execution of **OpenQASM (2.0/3.0)** and **QIR (LLVM Assembly)** using Qiskit Aer in the server layer.
-* **PNNL QASMBench Integration:** Dynamically fetches and runs benchmark circuits (like QAOA, Toffoli, and Grover) from the public [PNNL QASMBench](https://github.com/pnnl/QASMBench) library.
-* **X-Ray Payload Inspector:** A built-in debug panel in the console displaying exact API request/response JSON payloads, headers, and status codes.
-* **Codespaces Integration:** Pre-configured with Dev Containers so you can spin up the entire environment in a browser in under 60 seconds.
+- macOS or Linux
+- Python 3.11 or newer
+- a C++17 compiler (`c++`, `clang++`, or `g++`)
 
----
+Clone and start the demo:
 
-## Quick Start: GitHub Codespaces Demo
-
-This repository is designed to run as a browser-based demo with no local setup. The Codespace starts two services:
-
-* **Web Console:** port `3000`
-* **QDI Backend API:** port `8000`
-
-### 1. Create the Codespace
-
-1. Open this repository on GitHub.
-2. Click **Code**.
-3. Select the **Codespaces** tab.
-4. Click **Create codespace on main**.
-
-The dev container will automatically:
-
-* Create a Python virtual environment.
-* Install the Python dependencies (`fastapi`, `uvicorn`, `httpx`, `qiskit`, `qiskit-aer`).
-* Compile the C++ mock QDI shared library.
-* Start the FastAPI backend on port `8000`.
-* Start the static web console on port `3000`.
-* Attempt to make ports `3000` and `8000` public so the browser console can call the API.
-
-### 2. Open the Web Console
-
-When the Codespace finishes starting, GitHub should offer to open the forwarded `3000` port. If it does not:
-
-1. Open the **Ports** tab in the Codespace.
-2. Find **QDI Web Console** on port `3000`.
-3. Click the globe/open-browser icon.
-
-You should see the **Quantum Device Interface (QDI) Control Panel**.
-
-### 3. Verify the Backend
-
-The backend root URL may show:
-
-```json
-{"detail":"Not Found"}
+```bash
+git clone https://github.com/shassinger/qdi-demo.git
+cd qdi-demo
+./scripts/start
 ```
 
-That is normal. The API endpoint to test is:
+The first start creates `.venv`, installs the pinned Python dependencies, and
+builds the native mock library. Later starts reuse the environment when
+`requirements.txt` is unchanged.
+
+Open:
 
 ```text
-/qdi/v1/devices/mock/discover
+http://127.0.0.1:8000/
 ```
 
-From the Codespace terminal, run:
+Press Ctrl-C to stop the foreground server.
+
+### Open `index.html` directly
+
+You can also open `qdi-core/python/index.html` from the checkout. A page loaded
+with `file://` automatically calls the local API at `http://127.0.0.1:8000`.
+The server must still be running with `./scripts/start`.
+
+To point a directly opened page at another server, add an encoded `api` query
+parameter:
+
+```text
+file:///path/to/qdi-core/python/index.html?api=http://host.example:8000
+```
+
+### Background mode
 
 ```bash
-curl -i http://127.0.0.1:8000/qdi/v1/devices/mock/discover
+./scripts/start --background
+tail -f server.log
 ```
 
-Expected result:
-
-```json
-{
-  "device_id": "mock_qdi_qubit_v1",
-  "supported_auth_methods": ["token"],
-  "supported_task_types": ["openqasm3", "openqasm2", "qir"],
-  "is_ready": true,
-  "supports_estimation": true,
-  "num_qubits": 32
-}
-```
-
-### 4. Check Port Visibility
-
-The browser page on port `3000` calls the backend through the forwarded port `8000`, so both ports must be public.
-
-The startup script tries to set this automatically. If the UI says **Server Offline** or logs `Failed to fetch`:
-
-1. Open the **Ports** tab.
-2. Right-click port `8000`.
-3. Choose **Port Visibility**.
-4. Select **Public**.
-5. Do the same for port `3000` if needed.
-6. Refresh the web console.
-
-If an organization or account policy blocks public forwarded ports, you may need to run the demo from your own account, change the policy, or use authenticated requests to the private forwarded port.
-
-### 5. Run the Demo Flow
-
-1. Click **Query** in **1. Discover Device**.
-2. Click **Establish Trust** in **2. Authenticate**.
-3. Choose a sample circuit, such as **Bell State** or **QIR Bell State**.
-4. Set the number of shots.
-5. Click **Send Payload**.
-6. Watch the status move through `QUEUED`, `EXECUTING`, and `COMPLETED`.
-7. Review the result histogram and the **QDI X-Ray Payload Inspector**.
-
-The X-Ray panel shows the exact REST calls made by the client, including request bodies, response bodies, and status codes. This is the easiest way to explain the QDI protocol flow during a live demo.
-
-### Troubleshooting Codespaces
-
-If the web console does not load, check that the static server is running:
+The process ID is stored in `server.pid`. Stop that exact process with:
 
 ```bash
-curl -i http://127.0.0.1:3000/
+kill "$(cat server.pid)"
 ```
 
-If the backend does not answer, check the server logs:
+### Custom host, port, or Python
 
 ```bash
+QDI_API_HOST=127.0.0.1 QDI_PORT=8003 ./scripts/start
+QDI_PYTHON=python3.12 ./scripts/bootstrap
+```
+
+Custom ports also work with a directly opened dashboard:
+
+```text
+file:///path/to/index.html?api=http://127.0.0.1:8003
+```
+
+## Run in GitHub Codespaces
+
+1. Open the repository on GitHub.
+2. Select **Code**, then **Codespaces**.
+3. Create a Codespace from the desired branch.
+
+The container runs `./scripts/bootstrap` once after creation and starts the
+demo in the background whenever the Codespace starts. Only port `8000` is
+forwarded. The dashboard and API share the same authenticated Codespaces URL,
+so public port visibility is not required.
+
+If the browser does not open automatically, open the **Ports** panel and select
+the globe icon beside **QDI Demo** on port `8000`.
+
+Useful diagnostics:
+
+```bash
+curl -i http://127.0.0.1:8000/health
 tail -100 server.log
-tail -100 web.log
+./scripts/start --background
 ```
 
-To restart both services manually:
+Expected health response:
 
-```bash
-bash .devcontainer/start.sh
+```json
+{"status":"ok"}
 ```
 
-The startup script writes process IDs to:
+## Demo flow
 
-```text
-server.pid
-web.pid
-```
+1. Click **Query** to discover the mock device.
+2. Click **Establish Trust** to authenticate.
+3. Choose an OpenQASM or QIR sample and set the number of shots.
+4. Click **Send Payload**.
+5. Watch the task move through `QUEUED`, `EXECUTING`, and `COMPLETED`.
+6. Inspect the result histogram and the QDI X-Ray payload panel.
 
----
+The C-ABI implementation exercises `qdi_discover`, `qdi_authenticate`,
+`qdi_send`, `qdi_monitor`, `qdi_receive`, and resource estimation. Qiskit Aer
+provides the server-side circuit simulation.
 
-## Local Installation & Setup
+## Mock device configuration
 
-If running locally on your own machine (macOS / Linux):
-
-### 1. Build the C++ Driver Core
-Compile the QDI C-ABI mock shared library:
-```bash
-cd qdi-core
-clang++ -shared -o libqdi_mock.so -Iinclude src/qdi_mock.cpp -std=c++17 -fPIC
-```
-*(On macOS, compile to `.dylib` instead of `.so`)*
-
-### 2. Set Up Virtual Environment & Dependencies
-Initialize your virtual environment and install dependencies:
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install fastapi uvicorn httpx qiskit qiskit-aer
-```
-
-### 3. Launch the API & Web Servers
-Run the FastAPI wrapper server:
-```bash
-python qdi-core/python/qdi_demo_server.py
-```
-To serve the static web dashboard on port 3000:
-```bash
-python -m http.server 3000 --directory qdi-core/python
-```
-
-Open your browser and navigate to `http://127.0.0.1:3000` to interact with the device.
-
-### Hosted Dev Server
-The same launcher used by Codespaces can run on a hosted development machine,
-such as a Mac mini on your LAN:
-
-```bash
-bash .devcontainer/start.sh
-```
-
-By default this starts the API on `0.0.0.0:8000` and the web console on
-`0.0.0.0:3000`. From another machine on the same network, open:
-
-```text
-http://<host-name-or-ip>:3000
-```
-
-The web console automatically calls the API at the same host on port `8000`.
-If you need custom ports:
-
-```bash
-QDI_API_PORT=8003 QDI_WEB_PORT=8004 bash .devcontainer/start.sh
-```
-
-Then open:
-
-```text
-http://<host-name-or-ip>:8004?api=http://<host-name-or-ip>:8003
-```
-
-### Mock Device Configuration
-The demo device descriptor is configured by:
+The default descriptor is stored at:
 
 ```text
 qdi-core/python/mock_device_config.json
 ```
 
-Use this file to set device characteristics such as:
+It controls values including:
 
-* `num_qubits`
-* `max_shots`
-* `supported_task_types`
-* `supported_auth_methods`
-* `supports_estimation`
-* estimation timing/cost coefficients
+- `num_qubits`
+- `max_shots`
+- `supported_task_types`
+- `supported_auth_methods`
+- resource-estimation timing and cost coefficients
 
-To run with a different config without editing the default file:
+Use another boot configuration without editing the repository:
 
 ```bash
-QDI_DEVICE_CONFIG=/path/to/device.json bash .devcontainer/start.sh
+QDI_DEVICE_CONFIG=/path/to/device.json ./scripts/start
 ```
 
-The API uses the configured capabilities for `discover`, task-format
-validation, shot-limit validation, qubit-limit validation, and resource
-estimation.
+The **Server Online** control in the dashboard also opens an editor for the
+active in-memory device. Applying a change resets discovery, authentication,
+and task state. The JSON file remains the next boot default.
 
-You can also edit the active mock device in the web console. Click the
-**Server Online** control in the upper-right corner to open the mock device
-dialog, change the device shape, and apply the in-memory config. Applying a
-config resets discovery, authentication, and task state; run Discover again to
-start a new session. File-based config remains the boot default.
+## Development and tests
 
----
+Run the complete local test suite:
 
-## Protocol Execution Guide
+```bash
+./scripts/bootstrap
+.venv/bin/python qdi-core/python/test_qdi.py
+.venv/bin/python -m pytest
+```
 
-1. **Discover:** Click **Query** under *1. Discover Device* to trigger `qdi_discover`. The backend returns supported formats (`openqasm3`, `qir`) and available qubits.
-2. **Authenticate:** Click **Establish Trust** to run `qdi_authenticate`. This validates the session token and enables job submission.
-3. **Execute:** Choose a template from the dropdown menu (e.g. *QIR Bell State* or *PNNL QAOA*), configure the shots, and click **Send Payload** to trigger `qdi_send`.
-4. **Monitor & Receive:** The console automatically polls `qdi_monitor` tracking the job state (`QUEUED` ➜ `EXECUTING` ➜ `COMPLETED`), fetches the results via `qdi_receive`, and animates a probability histogram of the physical simulation.
+GitHub Actions runs these checks on both Ubuntu and macOS and smoke-tests the
+one-process launcher. Dependency versions are intentionally pinned in
+`requirements.txt`; update them deliberately and verify both CI platforms.
+
+## API endpoints
+
+The interactive OpenAPI documentation is available at:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+The main endpoints are:
+
+```text
+GET  /health
+GET  /qdi/v1/devices/mock/config
+PUT  /qdi/v1/devices/mock/config
+GET  /qdi/v1/devices/mock/discover
+POST /qdi/v1/devices/mock/authenticate
+POST /qdi/v1/devices/mock/tasks
+GET  /qdi/v1/devices/mock/tasks/{task_id}/status
+GET  /qdi/v1/devices/mock/tasks/{task_id}/results
+POST /qdi/v1/devices/mock/estimate
+GET  /qdi/v1/circuits
+```

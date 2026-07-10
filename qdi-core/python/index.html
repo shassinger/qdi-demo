@@ -729,22 +729,15 @@
     </div>
 
     <script>
-        // Dynamically resolve Codespace or local API URL
+        // Use the page's origin when served by FastAPI. Direct file:// opens
+        // continue to target the local backend, and ?api= remains available.
         function resolveApiUrl() {
             const params = new URLSearchParams(window.location.search);
             const apiOverride = params.get("api");
             if (apiOverride) return apiOverride.replace(/\/$/, "");
 
-            if (window.location.hostname.includes("github")) {
-                const apiHost = window.location.hostname.replace(/-\d+(\.)/, "-8000$1");
-                if (apiHost !== window.location.hostname) {
-                    return `${window.location.protocol}//${apiHost}`;
-                }
-                return window.location.origin.replace("-3000", "-8000").replace(":3000", ":8000");
-            }
-
             if (window.location.protocol === "http:" || window.location.protocol === "https:") {
-                return `${window.location.protocol}//${window.location.hostname}:8000`;
+                return window.location.origin;
             }
 
             return "http://127.0.0.1:8000";

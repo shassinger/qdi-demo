@@ -1,19 +1,13 @@
 {
   "name": "QDI Sandbox",
-  "image": "mcr.microsoft.com/devcontainers/python:3.10-bullseye",
-  "postCreateCommand": "python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install fastapi uvicorn httpx qiskit qiskit-aer qiskit_qasm3_import || echo 'resilient_install'",
-  "postStartCommand": "bash .devcontainer/start.sh",
-  "forwardPorts": [8000, 3000],
+  "image": "mcr.microsoft.com/devcontainers/python:3.11-bookworm",
+  "postCreateCommand": "./scripts/bootstrap",
+  "postStartCommand": "QDI_SKIP_BOOTSTRAP=1 ./scripts/start --background",
+  "forwardPorts": [8000],
   "portsAttributes": {
     "8000": {
-      "label": "QDI Backend API",
-      "onAutoForward": "silent",
-      "visibility": "public"
-    },
-    "3000": {
-      "label": "QDI Web Console",
-      "onAutoForward": "openBrowser",
-      "visibility": "public"
+      "label": "QDI Demo",
+      "onAutoForward": "openBrowser"
     }
   },
   "customizations": {

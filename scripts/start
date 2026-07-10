@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+if [ "${QDI_SKIP_BOOTSTRAP:-0}" != "1" ]; then
+    "$ROOT_DIR/scripts/bootstrap"
+fi
+
+QDI_API_HOST="${QDI_API_HOST:-0.0.0.0}"
+QDI_API_PORT="${QDI_PORT:-${QDI_API_PORT:-8000}}"
+SERVER_PID_FILE="${QDI_SERVER_PID_FILE:-server.pid}"
+SERVER_LOG_FILE="${QDI_SERVER_LOG_FILE:-server.log}"
+SERVER_COMMAND=(.venv/bin/python -u qdi-core/python/qdi_demo_server.py)
+
+is_ready() {
+    .venv/bin/python -c \
+        "import json, urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:${QDI_API_PORT}/health', timeout=2)); raise SystemExit(data.get('status') != 'ok')" \
+        >/dev/null 2>&1
+}
+
+wait_until_ready() {
+    local pid="$1"
+    for _ in $(seq 1 60); do
+        if is_ready; then
+            return 0
+        fi
+
+        if ! kill -0 "$pid" >/dev/null 2>&1; then
+            echo "QDI server exited during startup. Recent log output:" >&2
+            tail -100 "$SERVER_LOG_FILE" >&2 || true
+            return 1
+        fi
+        sleep 1
+    done
+
+    echo "QDI server did not become ready. Recent log output:" >&2
+    tail -100 "$SERVER_LOG_FILE" >&2 || true
+    return 1
+}
+
+if [ "${1:-}" = "--background" ]; then
+    if [ -f "$SERVER_PID_FILE" ]; then
+        existing_pid="$(<"$SERVER_PID_FILE")"
+        if kill -0 "$existing_pid" >/dev/null 2>&1; then
+            if is_ready; then
+                echo "QDI demo is already running (PID $existing_pid)."
+                echo "Open http://127.0.0.1:${QDI_API_PORT}/"
+                exit 0
+            fi
+            echo "Ignoring stale PID file for active non-QDI process $existing_pid."
+        fi
+    fi
+
+    echo "Starting QDI demo in the background on ${QDI_API_HOST}:${QDI_API_PORT}..."
+    QDI_API_HOST="$QDI_API_HOST" QDI_API_PORT="$QDI_API_PORT" \
+        nohup "${SERVER_COMMAND[@]}" < /dev/null > "$SERVER_LOG_FILE" 2>&1 &
+    server_pid=$!
+    printf '%s\n' "$server_pid" > "$SERVER_PID_FILE"
+    wait_until_ready "$server_pid"
+    echo "QDI demo is ready (PID $server_pid)."
+    echo "Open http://127.0.0.1:${QDI_API_PORT}/"
+    exit 0
+fi
+
+if [ "$#" -gt 0 ]; then
+    echo "Usage: ./scripts/start [--background]" >&2
+    exit 2
+fi
+
+echo "Starting QDI demo on http://127.0.0.1:${QDI_API_PORT}/ (Ctrl-C to stop)..."
+exec env QDI_API_HOST="$QDI_API_HOST" QDI_API_PORT="$QDI_API_PORT" "${SERVER_COMMAND[@]}"

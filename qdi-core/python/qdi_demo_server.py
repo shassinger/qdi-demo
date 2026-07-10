@@ -2,9 +2,11 @@ import sys
 import os
 import re
 import json
+from pathlib import Path
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 # Ensure we can load QDI Python bindings
@@ -16,13 +18,15 @@ from qiskit import QuantumCircuit
 from qiskit.qasm3 import loads as loads3
 from qiskit_aer import AerSimulator
 
+STATIC_DIR = Path(__file__).resolve().parent
+
 app = FastAPI(title="QDI Demo Server", description="Localhost REST API wrapper for the QDI mock device.")
 
 # Enable CORS for the local browser client
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -317,6 +321,11 @@ def simulate_qir(qir_str: str, shots: int = 1000) -> dict:
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/", include_in_schema=False)
+@app.get("/index.html", include_in_schema=False)
+def web_console():
+    return FileResponse(STATIC_DIR / "index.html")
 
 @app.get("/qdi/v1/devices/mock/config")
 def get_device_config():
