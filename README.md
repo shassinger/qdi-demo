@@ -7,6 +7,13 @@ and a browser control panel.
 The dashboard and API are served by one process on one port. The same commands
 work in a local clone and in GitHub Codespaces.
 
+## Current status
+
+The default `main` branch is the current stable demo. It supports both local
+and Codespaces startup through the same scripts, serves the dashboard and API
+from one process, and includes a browser-only device library. The QDI server
+still exposes one mock device; there is no device collection API.
+
 ## Run locally
 
 Requirements:
@@ -121,7 +128,7 @@ Select the **Server Online** control to open the device library. The menu lists
 the active device and all available presets, followed by **Configure
 selected…** and **Create new…**. Selecting or creating a device resets
 discovery, authentication, and task state so the next interaction begins with
-a fresh QDI session.
+a clean dashboard state.
 
 The library is exclusively a browser-side convenience feature. Built-in
 presets live in `index.html`, and custom devices are saved in browser
@@ -131,6 +138,10 @@ request. Normal page-load setup and health monitoring continue independently,
 and explicit protocol actions such as Discover, Authenticate, and task
 operations contact the server. The library adds no QDI commands or API
 endpoints.
+
+Library entries are client-side profiles used by the dashboard. They do not
+reconfigure the running mock server. Clicking **Query** always discovers the
+server's singular device and displays the descriptor returned by that server.
 
 The built-in collection includes the general 32-qubit mock QPU, a compact
 5-qubit device, and a QIR-only 16-qubit testbed. Each entry controls values
@@ -173,17 +184,26 @@ The interactive OpenAPI documentation is available at:
 http://127.0.0.1:8000/docs
 ```
 
-The main endpoints are:
+The QDI demonstration operations are:
 
 ```text
-GET  /health
-GET  /qdi/v1/devices/mock/config
-PUT  /qdi/v1/devices/mock/config
 GET  /qdi/v1/devices/mock/discover
 POST /qdi/v1/devices/mock/authenticate
 POST /qdi/v1/devices/mock/tasks
 GET  /qdi/v1/devices/mock/tasks/{task_id}/status
 GET  /qdi/v1/devices/mock/tasks/{task_id}/results
 POST /qdi/v1/devices/mock/estimate
+```
+
+The demo harness also provides these support endpoints:
+
+```text
+GET  /health
+GET  /qdi/v1/devices/mock/config
+PUT  /qdi/v1/devices/mock/config
 GET  /qdi/v1/circuits
 ```
+
+The configuration route controls the singular mock server and is not used by
+the browser device library. There is intentionally no `GET` or `POST`
+collection endpoint at `/qdi/v1/devices`.
