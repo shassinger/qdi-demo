@@ -19,6 +19,8 @@ def test_web_console_and_qdi_lifecycle():
         assert "Quantum Device Interface (QDI) Control Panel" in console.text
         assert "Create new…" in console.text
         assert "qdi-demo.custom-devices.v1" in console.text
+        assert 'method: "PUT"' not in console.text
+        assert console.text.count('const url = "/qdi/v1/devices/mock/config"') == 1
 
         assert client.get("/qdi/v1/devices").status_code == 404
         assert client.post("/qdi/v1/devices", json={}).status_code == 404

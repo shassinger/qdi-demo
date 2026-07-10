@@ -1153,42 +1153,25 @@
             updateStatusLabel();
         }
 
-        async function applyDeviceToServer(config, successMessage) {
-            const url = "/qdi/v1/devices/mock/config";
-            const response = await fetch(`${API_URL}${url}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(config)
-            });
-            const data = await response.json();
-            logXRay("PUT", url, config, data, response.status);
-            if (!response.ok) throw new Error(detailMessage(data, "Device configuration failed."));
-
-            qdiState.deviceConfig = data.config;
-            qdiState.activeDeviceId = data.config.device_id;
-            writeLocalStorage(ACTIVE_DEVICE_STORAGE_KEY, data.config.device_id);
+        function activateClientDevice(config, successMessage) {
+            qdiState.deviceConfig = structuredClone(config);
+            qdiState.activeDeviceId = config.device_id;
+            writeLocalStorage(ACTIVE_DEVICE_STORAGE_KEY, config.device_id);
             refreshDeviceLibrary();
             resetProtocolUi();
             if (successMessage) log(successMessage, "success");
-            return data.config;
+            return qdiState.deviceConfig;
         }
 
-        async function selectDevice(deviceId) {
+        function selectDevice(deviceId) {
             const selectedDevice = qdiState.devices.find((device) => device.device_id === deviceId);
             if (!selectedDevice || deviceId === qdiState.activeDeviceId) {
                 closeDeviceMenu();
                 return;
             }
 
-            try {
-                await applyDeviceToServer(
-                    selectedDevice,
-                    `Activated ${selectedDevice.display_name}. Run Discover to start a new session.`
-                );
-                closeDeviceMenu();
-            } catch (err) {
-                log(err.message, "error");
-            }
+            activateClientDevice(selectedDevice, `Selected ${selectedDevice.display_name}.`);
+            closeDeviceMenu();
         }
 
         async function fetchDeviceConfig() {
@@ -1264,8 +1247,9 @@
             document.getElementById("deviceConfigModal").classList.add("open");
             try {
                 document.getElementById("applyDeviceConfigBtn").disabled = true;
-                const config = await fetchDeviceConfig();
+                const config = qdiState.deviceConfig || await fetchDeviceConfig();
                 populateDeviceConfigForm(config);
+                document.getElementById("applyDeviceConfigBtn").disabled = false;
             } catch (err) {
                 log(err.message, "error");
             }
@@ -1307,11 +1291,7 @@
                 openCreateDeviceModal();
                 return;
             }
-            try {
-                populateDeviceConfigForm(await fetchDeviceConfig());
-            } catch (err) {
-                log(err.message, "error");
-            }
+            if (qdiState.deviceConfig) populateDeviceConfigForm(qdiState.deviceConfig);
         }
 
         async function applyDeviceConfig() {
@@ -1336,14 +1316,10 @@
                 return;
             }
 
-            try {
-                const savedConfig = await applyDeviceToServer(reqBody, null);
-                saveCustomDevice(savedConfig, creating ? null : previousDeviceId);
-                closeDeviceConfigModal();
-                log(`${creating ? "Device created and activated" : "Device configuration saved"}. Run Discover to start a new session.`, "success");
-            } catch (err) {
-                log(err.message, "error");
-            }
+            saveCustomDevice(reqBody, creating ? null : previousDeviceId);
+            activateClientDevice(reqBody, null);
+            closeDeviceConfigModal();
+            log(`${creating ? "Device created and selected" : "Device configuration saved"}.`, "success");
         }
 
         let circuitsLoaded = false;
@@ -1394,7 +1370,7 @@
                             const serverConfig = await fetchDeviceConfig();
                             const preferredDeviceId = readLocalStorage(ACTIVE_DEVICE_STORAGE_KEY, null);
                             const preferredDevice = qdiState.devices.find((device) => device.device_id === preferredDeviceId);
-                            if (preferredDevice) await applyDeviceToServer(preferredDevice, null);
+                            if (preferredDevice) activateClientDevice(preferredDevice, null);
                             else qdiState.activeDeviceId = serverConfig.device_id;
                             if (qdiState.deviceConfig) renderDeviceSummary(qdiState.deviceConfig, "Configured");
                         } catch (err) {

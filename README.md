@@ -126,9 +126,11 @@ a fresh QDI session.
 The library is exclusively a browser-side convenience feature. Built-in
 presets live in `index.html`, and custom devices are saved in browser
 `localStorage`. The server and QDI protocol continue to represent exactly one
-active device. Selecting a library entry applies its descriptor through the
-existing singular mock-device configuration endpoint; the library adds no QDI
-commands or API endpoints.
+device. Selecting, creating, or editing a library entry triggers no API
+request. Normal page-load setup and health monitoring continue independently,
+and explicit protocol actions such as Discover, Authenticate, and task
+operations contact the server. The library adds no QDI commands or API
+endpoints.
 
 The built-in collection includes the general 32-qubit mock QPU, a compact
 5-qubit device, and a QIR-only 16-qubit testbed. Each entry controls values
