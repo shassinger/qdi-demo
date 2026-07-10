@@ -99,7 +99,7 @@ tail -100 server.log
 Expected health response:
 
 ```json
-{"status":"ok","active_device_id":"mock_qdi_qubit_v1"}
+{"status":"ok"}
 ```
 
 ## Demo flow
@@ -123,14 +123,16 @@ selected…** and **Create new…**. Selecting or creating a device resets
 discovery, authentication, and task state so the next interaction begins with
 a fresh QDI session.
 
-The checked-in preset library is stored at:
+The library is exclusively a browser-side convenience feature. Built-in
+presets live in `index.html`, and custom devices are saved in browser
+`localStorage`. The server and QDI protocol continue to represent exactly one
+active device. Selecting a library entry applies its descriptor through the
+existing singular mock-device configuration endpoint; the library adds no QDI
+commands or API endpoints.
 
-```text
-qdi-core/python/mock_device_library.json
-```
-
-It includes the general 32-qubit mock QPU, a compact 5-qubit device, and a
-QIR-only 16-qubit testbed. Each device controls values including:
+The built-in collection includes the general 32-qubit mock QPU, a compact
+5-qubit device, and a QIR-only 16-qubit testbed. Each entry controls values
+including:
 
 - `num_qubits`
 - `max_shots`
@@ -138,18 +140,14 @@ QIR-only 16-qubit testbed. Each device controls values including:
 - `supported_auth_methods`
 - resource-estimation timing and cost coefficients
 
-Devices created or edited in the dashboard are persisted locally at
-`.qdi/device_library.json`. This runtime file is ignored by Git. Delete it to
-return to the checked-in presets on the next server start.
+Devices created or edited in the dashboard are private to that browser origin.
+Clear the site's browser storage to return to the built-in collection.
 
 Use a single boot configuration instead of the library:
 
 ```bash
 QDI_DEVICE_CONFIG=/path/to/device.json ./scripts/start
 ```
-
-To put runtime library state somewhere else, set
-`QDI_DEVICE_LIBRARY_STATE=/path/to/library.json`.
 
 ## Development and tests
 
@@ -177,9 +175,6 @@ The main endpoints are:
 
 ```text
 GET  /health
-GET  /qdi/v1/devices
-POST /qdi/v1/devices
-POST /qdi/v1/devices/{device_id}/activate
 GET  /qdi/v1/devices/mock/config
 PUT  /qdi/v1/devices/mock/config
 GET  /qdi/v1/devices/mock/discover

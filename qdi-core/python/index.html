@@ -843,6 +843,66 @@
             qir_bell: `; ModuleID = 'LLVMDialectModule'\nsource_filename = "LLVMDialectModule"\n\n%Qubit = type opaque\n%Result = type opaque\n\ndefine void @main() {\n  tail call void @__quantum__qis__h__body(%Qubit* null)\n  tail call void @__quantum__qis__cnot__body(%Qubit* null, %Qubit* nonnull inttoptr (i64 1 to %Qubit*))\n  tail call void @__quantum__qis__mz__body(%Qubit* null, %Result* null)\n  tail call void @__quantum__qis__mz__body(%Qubit* nonnull inttoptr (i64 1 to %Qubit*), %Result* nonnull inttoptr (i64 1 to %Result*))\n  ret void\n}`
         };
 
+        const BUILTIN_DEVICE_LIBRARY = [
+            {
+                device_id: "mock_qdi_qubit_v1",
+                display_name: "Mock QDI QPU",
+                supported_auth_methods: ["token"],
+                supported_task_types: ["openqasm3", "openqasm2", "qir"],
+                is_ready: true,
+                supports_estimation: true,
+                num_qubits: 32,
+                max_shots: 10000,
+                estimation: {
+                    base_duration_sec: 0.02,
+                    duration_per_shot_sec: 0.00003,
+                    duration_per_depth_sec: 0.004,
+                    cost_per_shot_usd: 0,
+                    cost_per_qubit_usd: 0
+                },
+                task_type_aliases: {qasm3: "openqasm3", qasm2: "openqasm2", llvm: "qir"}
+            },
+            {
+                device_id: "compact_qdi_5q",
+                display_name: "Compact 5-Qubit QPU",
+                supported_auth_methods: ["token"],
+                supported_task_types: ["openqasm3", "openqasm2"],
+                is_ready: true,
+                supports_estimation: true,
+                num_qubits: 5,
+                max_shots: 4096,
+                estimation: {
+                    base_duration_sec: 0.01,
+                    duration_per_shot_sec: 0.00002,
+                    duration_per_depth_sec: 0.002,
+                    cost_per_shot_usd: 0,
+                    cost_per_qubit_usd: 0
+                },
+                task_type_aliases: {qasm3: "openqasm3", qasm2: "openqasm2", llvm: "qir"}
+            },
+            {
+                device_id: "qir_testbed_16q",
+                display_name: "QIR Testbed 16-Qubit",
+                supported_auth_methods: ["token"],
+                supported_task_types: ["qir"],
+                is_ready: true,
+                supports_estimation: false,
+                num_qubits: 16,
+                max_shots: 2048,
+                estimation: {
+                    base_duration_sec: 0.03,
+                    duration_per_shot_sec: 0.00005,
+                    duration_per_depth_sec: 0.006,
+                    cost_per_shot_usd: 0,
+                    cost_per_qubit_usd: 0
+                },
+                task_type_aliases: {qasm3: "openqasm3", qasm2: "openqasm2", llvm: "qir"}
+            }
+        ];
+        const CUSTOM_DEVICE_STORAGE_KEY = "qdi-demo.custom-devices.v1";
+        const ACTIVE_DEVICE_STORAGE_KEY = "qdi-demo.active-device.v1";
+        let sessionCustomDevices = [];
+
         const loadedCircuits = {};
         const qdiState = {
             discovered: false,
@@ -1009,11 +1069,7 @@
 
             menu.classList.add("open");
             document.getElementById("serverStatusButton").setAttribute("aria-expanded", "true");
-            try {
-                await fetchDeviceLibrary();
-            } catch (err) {
-                log(err.message, "error");
-            }
+            refreshDeviceLibrary();
         }
 
         document.addEventListener("click", (event) => {
@@ -1027,6 +1083,48 @@
             document.getElementById("statusText").innerText = activeDevice
                 ? `Server Online · ${activeDevice.display_name}`
                 : "Server Online";
+        }
+
+        function readLocalStorage(key, fallback) {
+            try {
+                const storedValue = window.localStorage.getItem(key);
+                return storedValue === null ? fallback : JSON.parse(storedValue);
+            } catch (error) {
+                return fallback;
+            }
+        }
+
+        function writeLocalStorage(key, value) {
+            try {
+                window.localStorage.setItem(key, JSON.stringify(value));
+            } catch (error) {
+                log("Browser storage is unavailable; device-library changes will last only for this page.", "info");
+            }
+        }
+
+        function loadClientDeviceLibrary(serverConfig = null) {
+            const devicesById = new Map(
+                BUILTIN_DEVICE_LIBRARY.map((device) => [device.device_id, structuredClone(device)])
+            );
+            const customDevices = readLocalStorage(CUSTOM_DEVICE_STORAGE_KEY, sessionCustomDevices);
+            sessionCustomDevices = customDevices;
+            customDevices.forEach((device) => devicesById.set(device.device_id, device));
+            if (serverConfig && !devicesById.has(serverConfig.device_id)) {
+                devicesById.set(serverConfig.device_id, serverConfig);
+            }
+            qdiState.devices = Array.from(devicesById.values());
+            renderDeviceMenu();
+        }
+
+        function saveCustomDevice(config, previousDeviceId = null) {
+            const customDevices = readLocalStorage(CUSTOM_DEVICE_STORAGE_KEY, sessionCustomDevices)
+                .filter((device) => device.device_id !== previousDeviceId || device.device_id === config.device_id);
+            const existingIndex = customDevices.findIndex((device) => device.device_id === config.device_id);
+            if (existingIndex >= 0) customDevices[existingIndex] = config;
+            else customDevices.push(config);
+            sessionCustomDevices = customDevices;
+            writeLocalStorage(CUSTOM_DEVICE_STORAGE_KEY, customDevices);
+            loadClientDeviceLibrary(config);
         }
 
         function renderDeviceMenu() {
@@ -1050,40 +1148,44 @@
             });
         }
 
-        async function fetchDeviceLibrary() {
-            const url = "/qdi/v1/devices";
-            const response = await fetch(`${API_URL}${url}`);
-            const data = await response.json();
-            logXRay("GET", url, null, data, response.status);
-            if (!response.ok) throw new Error(detailMessage(data, "Device library fetch failed."));
-
-            qdiState.devices = data.devices;
-            qdiState.activeDeviceId = data.active_device_id;
-            qdiState.deviceConfig = data.devices.find((device) => device.device_id === data.active_device_id) || null;
-            renderDeviceMenu();
+        function refreshDeviceLibrary() {
+            loadClientDeviceLibrary(qdiState.deviceConfig);
             updateStatusLabel();
-            return data;
+        }
+
+        async function applyDeviceToServer(config, successMessage) {
+            const url = "/qdi/v1/devices/mock/config";
+            const response = await fetch(`${API_URL}${url}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(config)
+            });
+            const data = await response.json();
+            logXRay("PUT", url, config, data, response.status);
+            if (!response.ok) throw new Error(detailMessage(data, "Device configuration failed."));
+
+            qdiState.deviceConfig = data.config;
+            qdiState.activeDeviceId = data.config.device_id;
+            writeLocalStorage(ACTIVE_DEVICE_STORAGE_KEY, data.config.device_id);
+            refreshDeviceLibrary();
+            resetProtocolUi();
+            if (successMessage) log(successMessage, "success");
+            return data.config;
         }
 
         async function selectDevice(deviceId) {
-            if (deviceId === qdiState.activeDeviceId) {
+            const selectedDevice = qdiState.devices.find((device) => device.device_id === deviceId);
+            if (!selectedDevice || deviceId === qdiState.activeDeviceId) {
                 closeDeviceMenu();
                 return;
             }
 
-            const url = `/qdi/v1/devices/${encodeURIComponent(deviceId)}/activate`;
             try {
-                const response = await fetch(`${API_URL}${url}`, { method: "POST" });
-                const data = await response.json();
-                logXRay("POST", url, null, data, response.status);
-                if (!response.ok) throw new Error(detailMessage(data, "Device activation failed."));
-
-                qdiState.deviceConfig = data.config;
-                qdiState.activeDeviceId = data.config.device_id;
-                await fetchDeviceLibrary();
-                resetProtocolUi();
+                await applyDeviceToServer(
+                    selectedDevice,
+                    `Activated ${selectedDevice.display_name}. Run Discover to start a new session.`
+                );
                 closeDeviceMenu();
-                log(`Activated ${data.config.display_name}. Run Discover to start a new session.`, "success");
             } catch (err) {
                 log(err.message, "error");
             }
@@ -1096,6 +1198,8 @@
             logXRay("GET", url, null, data, response.status);
             if (!response.ok) throw new Error(detailMessage(data, "Device config fetch failed."));
             qdiState.deviceConfig = data;
+            qdiState.activeDeviceId = data.device_id;
+            loadClientDeviceLibrary(data);
             document.getElementById("applyDeviceConfigBtn").disabled = false;
             return data;
         }
@@ -1212,28 +1316,29 @@
 
         async function applyDeviceConfig() {
             const creating = qdiState.modalMode === "create";
-            const url = creating ? "/qdi/v1/devices" : "/qdi/v1/devices/mock/config";
             const reqBody = collectDeviceConfigForm();
+            const previousDeviceId = qdiState.activeDeviceId;
 
             if (!reqBody.display_name || !reqBody.device_id) {
                 log("Display Name and Device ID are required.", "error");
                 return;
             }
+            if (!/^[A-Za-z0-9._-]+$/.test(reqBody.device_id)) {
+                log("Device ID may contain only letters, numbers, dots, underscores, and hyphens.", "error");
+                return;
+            }
+            const collidesWithExisting = qdiState.devices.some((device) =>
+                device.device_id === reqBody.device_id
+                && (creating || device.device_id !== previousDeviceId)
+            );
+            if (collidesWithExisting) {
+                log(`Device ID "${reqBody.device_id}" already exists in this browser's library.`, "error");
+                return;
+            }
 
             try {
-                const response = await fetch(`${API_URL}${url}`, {
-                    method: creating ? "POST" : "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(reqBody)
-                });
-
-                const data = await response.json();
-                logXRay(creating ? "POST" : "PUT", url, reqBody, data, response.status);
-                if (!response.ok) throw new Error(detailMessage(data, creating ? "Device creation failed." : "Device config update failed."));
-
-                qdiState.deviceConfig = data.config;
-                await fetchDeviceLibrary();
-                resetProtocolUi();
+                const savedConfig = await applyDeviceToServer(reqBody, null);
+                saveCustomDevice(savedConfig, creating ? null : previousDeviceId);
                 closeDeviceConfigModal();
                 log(`${creating ? "Device created and activated" : "Device configuration saved"}. Run Discover to start a new session.`, "success");
             } catch (err) {
@@ -1286,7 +1391,11 @@
                     if (!startupConfigLoaded) {
                         startupConfigLoaded = true;
                         try {
-                            await fetchDeviceLibrary();
+                            const serverConfig = await fetchDeviceConfig();
+                            const preferredDeviceId = readLocalStorage(ACTIVE_DEVICE_STORAGE_KEY, null);
+                            const preferredDevice = qdiState.devices.find((device) => device.device_id === preferredDeviceId);
+                            if (preferredDevice) await applyDeviceToServer(preferredDevice, null);
+                            else qdiState.activeDeviceId = serverConfig.device_id;
                             if (qdiState.deviceConfig) renderDeviceSummary(qdiState.deviceConfig, "Configured");
                         } catch (err) {
                             startupConfigLoaded = false;

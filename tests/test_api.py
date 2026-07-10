@@ -1,8 +1,4 @@
-import json
-import os
 import sys
-import tempfile
-import uuid
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -10,8 +6,6 @@ from fastapi.testclient import TestClient
 
 PYTHON_DIR = Path(__file__).resolve().parents[1] / "qdi-core" / "python"
 sys.path.insert(0, str(PYTHON_DIR))
-DEVICE_LIBRARY_STATE = Path(tempfile.gettempdir()) / f"qdi-device-library-{uuid.uuid4().hex}.json"
-os.environ["QDI_DEVICE_LIBRARY_STATE"] = str(DEVICE_LIBRARY_STATE)
 
 from qdi_demo_server import app, reset_runtime_state  # noqa: E402
 
@@ -24,15 +18,10 @@ def test_web_console_and_qdi_lifecycle():
         assert console.status_code == 200
         assert "Quantum Device Interface (QDI) Control Panel" in console.text
         assert "Create new…" in console.text
+        assert "qdi-demo.custom-devices.v1" in console.text
 
-        library = client.get("/qdi/v1/devices")
-        assert library.status_code == 200
-        assert library.json()["active_device_id"] == "mock_qdi_qubit_v1"
-        assert {device["device_id"] for device in library.json()["devices"]} == {
-            "mock_qdi_qubit_v1",
-            "compact_qdi_5q",
-            "qir_testbed_16q",
-        }
+        assert client.get("/qdi/v1/devices").status_code == 404
+        assert client.post("/qdi/v1/devices", json={}).status_code == 404
 
         file_origin = client.get("/health", headers={"Origin": "null"})
         assert file_origin.status_code == 200
@@ -85,45 +74,3 @@ def test_web_console_and_qdi_lifecycle():
         assert result.status_code == 200
         assert result.json()["result_type"] == "counts"
         assert sum(result.json()["result"].values()) == 100
-
-        activated = client.post("/qdi/v1/devices/compact_qdi_5q/activate")
-        assert activated.status_code == 200
-        assert activated.json()["config"]["num_qubits"] == 5
-
-        session_was_reset = client.post(
-            "/qdi/v1/devices/mock/tasks",
-            json={"task_payload": "OPENQASM 3.0;", "task_type": "openqasm3", "shots": 10},
-        )
-        assert session_was_reset.status_code == 409
-
-        duplicate = client.post(
-            "/qdi/v1/devices",
-            json=activated.json()["config"],
-        )
-        assert duplicate.status_code == 409
-
-        invalid_id = client.post(
-            "/qdi/v1/devices",
-            json={**activated.json()["config"], "device_id": "not a path/id"},
-        )
-        assert invalid_id.status_code == 422
-
-        created = client.post(
-            "/qdi/v1/devices",
-            json={
-                **activated.json()["config"],
-                "device_id": "custom_demo_7q",
-                "display_name": "Custom Demo 7-Qubit",
-                "num_qubits": 7,
-            },
-        )
-        assert created.status_code == 201
-        assert created.json()["config"]["device_id"] == "custom_demo_7q"
-
-        updated_library = client.get("/qdi/v1/devices").json()
-        assert updated_library["active_device_id"] == "custom_demo_7q"
-        assert len(updated_library["devices"]) == 4
-
-        persisted_library = json.loads(DEVICE_LIBRARY_STATE.read_text(encoding="utf-8"))
-        assert persisted_library["active_device_id"] == "custom_demo_7q"
-        assert len(persisted_library["devices"]) == 4

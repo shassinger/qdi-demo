@@ -19,11 +19,6 @@ from qiskit.qasm3 import loads as loads3
 from qiskit_aer import AerSimulator
 
 STATIC_DIR = Path(__file__).resolve().parent
-REPO_ROOT = STATIC_DIR.parents[1]
-DEFAULT_DEVICE_LIBRARY_PATH = STATIC_DIR / "mock_device_library.json"
-DEVICE_LIBRARY_STATE_PATH = Path(
-    os.environ.get("QDI_DEVICE_LIBRARY_STATE", REPO_ROOT / ".qdi" / "device_library.json")
-)
 
 app = FastAPI(title="QDI Demo Server", description="Localhost REST API wrapper for the QDI mock device.")
 
@@ -74,8 +69,6 @@ def normalize_device_config(overrides: dict) -> dict:
 
     config["num_qubits"] = int(config["num_qubits"])
     config["max_shots"] = int(config.get("max_shots", DEFAULT_DEVICE_CONFIG["max_shots"]))
-    config["device_id"] = str(config.get("device_id", "")).strip()
-    config["display_name"] = str(config.get("display_name", "")).strip()
     config["supported_task_types"] = list(config["supported_task_types"])
     config["supported_auth_methods"] = list(config["supported_auth_methods"])
     config["supports_estimation"] = bool(config.get("supports_estimation", False))
@@ -90,12 +83,6 @@ def normalize_device_config(overrides: dict) -> dict:
 
     if config["num_qubits"] < 1:
         raise ValueError("Device config num_qubits must be at least 1.")
-    if not config["device_id"]:
-        raise ValueError("Device config device_id must not be empty.")
-    if not re.fullmatch(r"[A-Za-z0-9._-]+", config["device_id"]):
-        raise ValueError("Device config device_id may contain only letters, numbers, dots, underscores, and hyphens.")
-    if not config["display_name"]:
-        raise ValueError("Device config display_name must not be empty.")
     if config["max_shots"] < 1:
         raise ValueError("Device config max_shots must be at least 1.")
     if not config["supported_task_types"]:
@@ -117,59 +104,7 @@ def load_device_config() -> dict:
 
     return normalize_device_config(loaded_config)
 
-def load_device_library() -> tuple[dict[str, dict], str]:
-    if os.environ.get("QDI_DEVICE_CONFIG"):
-        config = load_device_config()
-        return {config["device_id"]: config}, config["device_id"]
-
-    library_path = (
-        DEVICE_LIBRARY_STATE_PATH
-        if DEVICE_LIBRARY_STATE_PATH.exists()
-        else DEFAULT_DEVICE_LIBRARY_PATH
-    )
-    with library_path.open("r", encoding="utf-8") as library_file:
-        library_data = json.load(library_file)
-
-    devices = {}
-    for device_overrides in library_data.get("devices", []):
-        config = normalize_device_config(device_overrides)
-        device_id = config["device_id"]
-        if device_id in devices:
-            raise ValueError(f"Duplicate device_id '{device_id}' in {library_path}.")
-        devices[device_id] = config
-
-    if not devices:
-        raise ValueError(f"Device library {library_path} must contain at least one device.")
-
-    active_device_id = library_data.get("active_device_id")
-    if active_device_id not in devices:
-        active_device_id = next(iter(devices))
-    return devices, active_device_id
-
-def persist_device_library():
-    DEVICE_LIBRARY_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    state = {
-        "active_device_id": ACTIVE_DEVICE_ID,
-        "devices": list(DEVICE_LIBRARY.values()),
-    }
-    temporary_path = DEVICE_LIBRARY_STATE_PATH.with_suffix(".tmp")
-    with temporary_path.open("w", encoding="utf-8") as state_file:
-        json.dump(state, state_file, indent=2)
-        state_file.write("\n")
-    temporary_path.replace(DEVICE_LIBRARY_STATE_PATH)
-
-DEVICE_LIBRARY, ACTIVE_DEVICE_ID = load_device_library()
-MOCK_DEVICE_CONFIG = DEVICE_LIBRARY[ACTIVE_DEVICE_ID]
-
-def activate_device(device_id: str) -> dict:
-    global ACTIVE_DEVICE_ID, MOCK_DEVICE_CONFIG
-    if device_id not in DEVICE_LIBRARY:
-        raise KeyError(device_id)
-    ACTIVE_DEVICE_ID = device_id
-    MOCK_DEVICE_CONFIG = DEVICE_LIBRARY[device_id]
-    reset_runtime_state()
-    persist_device_library()
-    return MOCK_DEVICE_CONFIG
+MOCK_DEVICE_CONFIG = load_device_config()
 
 class AuthRequest(BaseModel):
     token: str
@@ -385,7 +320,7 @@ def simulate_qir(qir_str: str, shots: int = 1000) -> dict:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "active_device_id": ACTIVE_DEVICE_ID}
+    return {"status": "ok"}
 
 @app.get("/", include_in_schema=False)
 @app.get("/index.html", include_in_schema=False)
@@ -396,63 +331,15 @@ def web_console():
 def get_device_config():
     return MOCK_DEVICE_CONFIG
 
-@app.get("/qdi/v1/devices")
-def list_devices():
-    return {
-        "active_device_id": ACTIVE_DEVICE_ID,
-        "devices": list(DEVICE_LIBRARY.values()),
-    }
-
-@app.post("/qdi/v1/devices", status_code=201)
-def create_device(config_update: dict):
-    try:
-        config = normalize_device_config(config_update)
-    except (TypeError, ValueError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
-
-    device_id = config["device_id"]
-    if device_id in DEVICE_LIBRARY:
-        raise HTTPException(status_code=409, detail=f"Device ID '{device_id}' already exists.")
-
-    DEVICE_LIBRARY[device_id] = config
-    activate_device(device_id)
-    return {
-        "status": "created",
-        "message": "Device created and activated. Discovery and authentication state were reset.",
-        "config": config,
-    }
-
-@app.post("/qdi/v1/devices/{device_id}/activate")
-def select_device(device_id: str):
-    try:
-        config = activate_device(device_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail=f"Device ID '{device_id}' was not found.")
-    return {
-        "status": "activated",
-        "message": "Device activated. Discovery and authentication state were reset.",
-        "config": config,
-    }
-
 @app.put("/qdi/v1/devices/mock/config")
 def update_device_config(config_update: dict):
-    global ACTIVE_DEVICE_ID, MOCK_DEVICE_CONFIG
+    global MOCK_DEVICE_CONFIG
     try:
-        updated_config = normalize_device_config(config_update)
+        MOCK_DEVICE_CONFIG = normalize_device_config(config_update)
     except (TypeError, ValueError) as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    updated_device_id = updated_config["device_id"]
-    if updated_device_id != ACTIVE_DEVICE_ID and updated_device_id in DEVICE_LIBRARY:
-        raise HTTPException(status_code=409, detail=f"Device ID '{updated_device_id}' already exists.")
-
-    del DEVICE_LIBRARY[ACTIVE_DEVICE_ID]
-    DEVICE_LIBRARY[updated_device_id] = updated_config
-    ACTIVE_DEVICE_ID = updated_device_id
-    MOCK_DEVICE_CONFIG = updated_config
-
     reset_runtime_state()
-    persist_device_library()
     return {
         "status": "updated",
         "message": "Mock device config updated. Discovery and authentication state were reset.",

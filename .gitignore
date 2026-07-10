@@ -1,6 +1,5 @@
 # Ignore virtual env
 .venv/
-.qdi/
 
 # Ignore sub-repositories (except the files we created/edited)
 /amazon-braket-qdmi-device
