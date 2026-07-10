@@ -99,7 +99,7 @@ tail -100 server.log
 Expected health response:
 
 ```json
-{"status":"ok"}
+{"status":"ok","active_device_id":"mock_qdi_qubit_v1"}
 ```
 
 ## Demo flow
@@ -115,15 +115,22 @@ The C-ABI implementation exercises `qdi_discover`, `qdi_authenticate`,
 `qdi_send`, `qdi_monitor`, `qdi_receive`, and resource estimation. Qiskit Aer
 provides the server-side circuit simulation.
 
-## Mock device configuration
+## Device library
 
-The default descriptor is stored at:
+Select the **Server Online** control to open the device library. The menu lists
+the active device and all available presets, followed by **Configure
+selected…** and **Create new…**. Selecting or creating a device resets
+discovery, authentication, and task state so the next interaction begins with
+a fresh QDI session.
+
+The checked-in preset library is stored at:
 
 ```text
-qdi-core/python/mock_device_config.json
+qdi-core/python/mock_device_library.json
 ```
 
-It controls values including:
+It includes the general 32-qubit mock QPU, a compact 5-qubit device, and a
+QIR-only 16-qubit testbed. Each device controls values including:
 
 - `num_qubits`
 - `max_shots`
@@ -131,15 +138,18 @@ It controls values including:
 - `supported_auth_methods`
 - resource-estimation timing and cost coefficients
 
-Use another boot configuration without editing the repository:
+Devices created or edited in the dashboard are persisted locally at
+`.qdi/device_library.json`. This runtime file is ignored by Git. Delete it to
+return to the checked-in presets on the next server start.
+
+Use a single boot configuration instead of the library:
 
 ```bash
 QDI_DEVICE_CONFIG=/path/to/device.json ./scripts/start
 ```
 
-The **Server Online** control in the dashboard also opens an editor for the
-active in-memory device. Applying a change resets discovery, authentication,
-and task state. The JSON file remains the next boot default.
+To put runtime library state somewhere else, set
+`QDI_DEVICE_LIBRARY_STATE=/path/to/library.json`.
 
 ## Development and tests
 
@@ -167,6 +177,9 @@ The main endpoints are:
 
 ```text
 GET  /health
+GET  /qdi/v1/devices
+POST /qdi/v1/devices
+POST /qdi/v1/devices/{device_id}/activate
 GET  /qdi/v1/devices/mock/config
 PUT  /qdi/v1/devices/mock/config
 GET  /qdi/v1/devices/mock/discover

@@ -43,6 +43,8 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            position: relative;
+            z-index: 45;
             border-bottom: 1px solid var(--glass-border);
             background: rgba(9, 11, 17, 0.5);
             backdrop-filter: blur(10px);
@@ -81,6 +83,81 @@
         .server-status:hover {
             background: rgba(255, 255, 255, 0.08);
             border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .server-control {
+            position: relative;
+        }
+
+        .status-chevron {
+            color: var(--text-secondary);
+            font-size: 10px;
+            margin-left: 2px;
+        }
+
+        .device-menu {
+            position: absolute;
+            top: calc(100% + 10px);
+            right: 0;
+            width: 300px;
+            display: none;
+            padding: 8px;
+            background: #090b11;
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+            z-index: 40;
+        }
+
+        .device-menu.open {
+            display: block;
+        }
+
+        .device-menu-title {
+            padding: 7px 10px 9px;
+            color: var(--text-secondary);
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+        }
+
+        .device-menu-item {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px;
+            color: var(--text-primary);
+            background: transparent;
+            border: 0;
+            border-radius: 8px;
+            cursor: pointer;
+            font: inherit;
+            text-align: left;
+        }
+
+        .device-menu-item:hover,
+        .device-menu-item.active {
+            background: rgba(255, 255, 255, 0.07);
+        }
+
+        .device-menu-item.active {
+            color: var(--accent-cyan);
+        }
+
+        .device-menu-item-meta {
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            white-space: nowrap;
+        }
+
+        .device-menu-divider {
+            height: 1px;
+            margin: 6px 4px;
+            background: var(--glass-border);
         }
 
         .status-dot {
@@ -577,16 +654,30 @@
             <h1>Quantum Device Interface (QDI)</h1>
             <p>Universal Localhost Verification Console</p>
         </div>
-        <button class="server-status" type="button" onclick="openDeviceConfigModal()">
-            <div id="statusDot" class="status-dot"></div>
-            <span id="statusText">Server Offline</span>
-        </button>
+        <div class="server-control" id="serverControl">
+            <button class="server-status" type="button" onclick="toggleDeviceMenu(event)" aria-haspopup="menu" aria-expanded="false" id="serverStatusButton">
+                <div id="statusDot" class="status-dot"></div>
+                <span id="statusText">Server Offline</span>
+                <span class="status-chevron">▼</span>
+            </button>
+            <div class="device-menu" id="deviceMenu" role="menu">
+                <div class="device-menu-title">Device Library</div>
+                <div id="deviceMenuItems"></div>
+                <div class="device-menu-divider"></div>
+                <button class="device-menu-item" type="button" onclick="openActiveDeviceConfig()">
+                    <span>Configure selected…</span>
+                </button>
+                <button class="device-menu-item" type="button" onclick="openCreateDeviceModal()">
+                    <span>＋ Create new…</span>
+                </button>
+            </div>
+        </div>
     </header>
 
     <div class="modal-backdrop" id="deviceConfigModal" onclick="handleModalBackdrop(event)">
         <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="deviceConfigTitle">
             <div class="modal-header">
-                <h2 id="deviceConfigTitle">Mock Device</h2>
+                <h2 id="deviceConfigTitle">Configure Device</h2>
                 <button class="btn btn-outline" type="button" onclick="closeDeviceConfigModal()">Close</button>
             </div>
 
@@ -645,7 +736,7 @@
 
             <div class="modal-actions">
                 <button class="btn btn-outline" type="button" onclick="resetDeviceConfigForm()">Reload</button>
-                <button class="btn" id="applyDeviceConfigBtn" type="button" onclick="applyDeviceConfig()" disabled>Apply Config</button>
+                <button class="btn" id="applyDeviceConfigBtn" type="button" onclick="applyDeviceConfig()" disabled>Save Device</button>
             </div>
         </div>
     </div>
@@ -757,7 +848,10 @@
             discovered: false,
             authenticated: false,
             descriptor: null,
-            deviceConfig: null
+            deviceConfig: null,
+            devices: [],
+            activeDeviceId: null,
+            modalMode: "edit"
         };
 
         function loadTemplate(name) {
@@ -839,6 +933,16 @@
             return "openqasm3";
         }
 
+        function escapeHtml(value) {
+            return String(value).replace(/[&<>"']/g, (character) => ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#039;"
+            })[character]);
+        }
+
         function renderQubitGrid(numQubits) {
             const grid = document.getElementById("qubitGrid");
             grid.innerHTML = "";
@@ -855,13 +959,13 @@
         function renderDeviceSummary(data, stateLabel = "Configured") {
             const detailsBox = document.getElementById("deviceDetails");
             detailsBox.innerHTML = `
-                ${data.display_name ? `<div class="detail-row"><span>Name</span><span>${data.display_name}</span></div>` : ""}
-                <div class="detail-row"><span>Device ID</span><span>${data.device_id}</span></div>
-                <div class="detail-row"><span>Qubits</span><span>${data.num_qubits}</span></div>
-                ${data.max_shots ? `<div class="detail-row"><span>Max Shots</span><span>${data.max_shots}</span></div>` : ""}
-                <div class="detail-row"><span>Task Formats</span><span>${data.supported_task_types.join(", ")}</span></div>
-                <div class="detail-row"><span>Supports Estimation</span><span>${data.supports_estimation}</span></div>
-                <div class="detail-row"><span>State</span><span>${stateLabel}</span></div>
+                ${data.display_name ? `<div class="detail-row"><span>Name</span><span>${escapeHtml(data.display_name)}</span></div>` : ""}
+                <div class="detail-row"><span>Device ID</span><span>${escapeHtml(data.device_id)}</span></div>
+                <div class="detail-row"><span>Qubits</span><span>${escapeHtml(data.num_qubits)}</span></div>
+                ${data.max_shots ? `<div class="detail-row"><span>Max Shots</span><span>${escapeHtml(data.max_shots)}</span></div>` : ""}
+                <div class="detail-row"><span>Task Formats</span><span>${escapeHtml(data.supported_task_types.join(", "))}</span></div>
+                <div class="detail-row"><span>Supports Estimation</span><span>${escapeHtml(data.supports_estimation)}</span></div>
+                <div class="detail-row"><span>State</span><span>${escapeHtml(stateLabel)}</span></div>
             `;
             renderQubitGrid(data.num_qubits);
         }
@@ -887,6 +991,102 @@
 
         function readNumberValue(id) {
             return Number(document.getElementById(id).value);
+        }
+
+        function closeDeviceMenu() {
+            document.getElementById("deviceMenu").classList.remove("open");
+            document.getElementById("serverStatusButton").setAttribute("aria-expanded", "false");
+        }
+
+        async function toggleDeviceMenu(event) {
+            event.stopPropagation();
+            const menu = document.getElementById("deviceMenu");
+            const willOpen = !menu.classList.contains("open");
+            if (!willOpen) {
+                closeDeviceMenu();
+                return;
+            }
+
+            menu.classList.add("open");
+            document.getElementById("serverStatusButton").setAttribute("aria-expanded", "true");
+            try {
+                await fetchDeviceLibrary();
+            } catch (err) {
+                log(err.message, "error");
+            }
+        }
+
+        document.addEventListener("click", (event) => {
+            if (!document.getElementById("serverControl").contains(event.target)) {
+                closeDeviceMenu();
+            }
+        });
+
+        function updateStatusLabel() {
+            const activeDevice = qdiState.devices.find((device) => device.device_id === qdiState.activeDeviceId);
+            document.getElementById("statusText").innerText = activeDevice
+                ? `Server Online · ${activeDevice.display_name}`
+                : "Server Online";
+        }
+
+        function renderDeviceMenu() {
+            const container = document.getElementById("deviceMenuItems");
+            container.innerHTML = "";
+
+            qdiState.devices.forEach((device) => {
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = `device-menu-item${device.device_id === qdiState.activeDeviceId ? " active" : ""}`;
+                button.setAttribute("role", "menuitem");
+                button.addEventListener("click", () => selectDevice(device.device_id));
+
+                const label = document.createElement("span");
+                label.textContent = `${device.device_id === qdiState.activeDeviceId ? "✓ " : ""}${device.display_name}`;
+                const meta = document.createElement("span");
+                meta.className = "device-menu-item-meta";
+                meta.textContent = `${device.num_qubits}q`;
+                button.append(label, meta);
+                container.appendChild(button);
+            });
+        }
+
+        async function fetchDeviceLibrary() {
+            const url = "/qdi/v1/devices";
+            const response = await fetch(`${API_URL}${url}`);
+            const data = await response.json();
+            logXRay("GET", url, null, data, response.status);
+            if (!response.ok) throw new Error(detailMessage(data, "Device library fetch failed."));
+
+            qdiState.devices = data.devices;
+            qdiState.activeDeviceId = data.active_device_id;
+            qdiState.deviceConfig = data.devices.find((device) => device.device_id === data.active_device_id) || null;
+            renderDeviceMenu();
+            updateStatusLabel();
+            return data;
+        }
+
+        async function selectDevice(deviceId) {
+            if (deviceId === qdiState.activeDeviceId) {
+                closeDeviceMenu();
+                return;
+            }
+
+            const url = `/qdi/v1/devices/${encodeURIComponent(deviceId)}/activate`;
+            try {
+                const response = await fetch(`${API_URL}${url}`, { method: "POST" });
+                const data = await response.json();
+                logXRay("POST", url, null, data, response.status);
+                if (!response.ok) throw new Error(detailMessage(data, "Device activation failed."));
+
+                qdiState.deviceConfig = data.config;
+                qdiState.activeDeviceId = data.config.device_id;
+                await fetchDeviceLibrary();
+                resetProtocolUi();
+                closeDeviceMenu();
+                log(`Activated ${data.config.display_name}. Run Discover to start a new session.`, "success");
+            } catch (err) {
+                log(err.message, "error");
+            }
         }
 
         async function fetchDeviceConfig() {
@@ -925,8 +1125,8 @@
                 .map((checkbox) => checkbox.value);
 
             return {
-                device_id: document.getElementById("configDeviceId").value.trim() || "mock_qdi_qubit_v1",
-                display_name: document.getElementById("configDisplayName").value.trim() || "Mock QDI QPU",
+                device_id: document.getElementById("configDeviceId").value.trim(),
+                display_name: document.getElementById("configDisplayName").value.trim(),
                 supported_auth_methods: ["token"],
                 supported_task_types: supportedTaskTypes,
                 is_ready: true,
@@ -948,7 +1148,15 @@
             };
         }
 
+        async function openActiveDeviceConfig() {
+            closeDeviceMenu();
+            await openDeviceConfigModal();
+        }
+
         async function openDeviceConfigModal() {
+            qdiState.modalMode = "edit";
+            document.getElementById("deviceConfigTitle").innerText = "Configure Device";
+            document.getElementById("applyDeviceConfigBtn").innerText = "Save Device";
             document.getElementById("deviceConfigModal").classList.add("open");
             try {
                 document.getElementById("applyDeviceConfigBtn").disabled = true;
@@ -957,6 +1165,27 @@
             } catch (err) {
                 log(err.message, "error");
             }
+        }
+
+        function openCreateDeviceModal() {
+            closeDeviceMenu();
+            qdiState.modalMode = "create";
+            document.getElementById("deviceConfigTitle").innerText = "Create New Device";
+            document.getElementById("applyDeviceConfigBtn").innerText = "Create Device";
+
+            const template = qdiState.deviceConfig || {
+                device_id: "",
+                display_name: "",
+                supported_task_types: ["openqasm3", "openqasm2", "qir"],
+                num_qubits: 8,
+                max_shots: 4096,
+                supports_estimation: true,
+                estimation: {}
+            };
+            populateDeviceConfigForm({...template, device_id: "", display_name: ""});
+            document.getElementById("applyDeviceConfigBtn").disabled = false;
+            document.getElementById("deviceConfigModal").classList.add("open");
+            document.getElementById("configDisplayName").focus();
         }
 
         function closeDeviceConfigModal() {
@@ -970,6 +1199,10 @@
         }
 
         async function resetDeviceConfigForm() {
+            if (qdiState.modalMode === "create") {
+                openCreateDeviceModal();
+                return;
+            }
             try {
                 populateDeviceConfigForm(await fetchDeviceConfig());
             } catch (err) {
@@ -978,24 +1211,31 @@
         }
 
         async function applyDeviceConfig() {
-            const url = "/qdi/v1/devices/mock/config";
+            const creating = qdiState.modalMode === "create";
+            const url = creating ? "/qdi/v1/devices" : "/qdi/v1/devices/mock/config";
             const reqBody = collectDeviceConfigForm();
+
+            if (!reqBody.display_name || !reqBody.device_id) {
+                log("Display Name and Device ID are required.", "error");
+                return;
+            }
 
             try {
                 const response = await fetch(`${API_URL}${url}`, {
-                    method: "PUT",
+                    method: creating ? "POST" : "PUT",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(reqBody)
                 });
 
                 const data = await response.json();
-                logXRay("PUT", url, reqBody, data, response.status);
-                if (!response.ok) throw new Error(detailMessage(data, "Device config update failed."));
+                logXRay(creating ? "POST" : "PUT", url, reqBody, data, response.status);
+                if (!response.ok) throw new Error(detailMessage(data, creating ? "Device creation failed." : "Device config update failed."));
 
                 qdiState.deviceConfig = data.config;
+                await fetchDeviceLibrary();
                 resetProtocolUi();
                 closeDeviceConfigModal();
-                log("Mock device config applied. Run Discover again to start a new session.", "success");
+                log(`${creating ? "Device created and activated" : "Device configuration saved"}. Run Discover to start a new session.`, "success");
             } catch (err) {
                 log(err.message, "error");
             }
@@ -1043,17 +1283,17 @@
                 const response = await fetch(`${API_URL}/health`);
                 if (response.ok) {
                     dot.className = "status-dot online";
-                    text.innerText = "Server Online";
                     if (!startupConfigLoaded) {
                         startupConfigLoaded = true;
                         try {
-                            const config = await fetchDeviceConfig();
-                            renderDeviceSummary(config, "Configured");
+                            await fetchDeviceLibrary();
+                            if (qdiState.deviceConfig) renderDeviceSummary(qdiState.deviceConfig, "Configured");
                         } catch (err) {
                             startupConfigLoaded = false;
                             log(err.message, "error");
                         }
                     }
+                    updateStatusLabel();
                     if (!circuitsLoaded) {
                         circuitsLoaded = true;
                         loadPNNLCircuits();
@@ -1064,6 +1304,7 @@
             } catch (e) {
                 dot.className = "status-dot";
                 text.innerText = "Server Offline";
+                closeDeviceMenu();
             }
         }
 
