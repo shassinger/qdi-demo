@@ -4,6 +4,43 @@ An interactive, containerized developer sandbox designed to demonstrate the **Qu
 
 This sandbox compiles the core QDI driver libraries, launches a local FastAPI web server wrapper, and serves an interactive web dashboard for real-time protocol verification.
 
+## HTTP transport
+
+The demo's application-facing `QdiClient` is an HTTP(S) client. The C-ABI mock
+implementation is retained as the server-side device adapter, so the transport
+boundary is now explicit:
+
+```text
+application -> QdiClient -> HTTP(S) API -> NativeQdiClient -> qdi-core mock
+```
+
+Authentication uses the standard HTTP `Authorization: Bearer <token>` header.
+The handshake returns an access token, and task submission, estimation, status,
+and result requests require that token. Set `QDI_API_URL` when using the Python
+client against a non-default server:
+
+```python
+from qdi_python import QdiClient
+
+with QdiClient() as client:
+    client.discover()
+    client.authenticate({"token": "valid-token"})
+    task_id = client.send(b"OPENQASM 3.0;", "openqasm3")
+```
+
+For encrypted transport, provide a certificate and private key when starting
+the demo server:
+
+```bash
+QDI_TLS_CERTFILE=/path/server.crt \
+QDI_TLS_KEYFILE=/path/server.key \
+QDI_API_URL=https://127.0.0.1:8000 \
+python qdi-core/python/qdi_demo_server.py
+```
+
+Use a trusted certificate in real deployments; the demo does not disable TLS
+verification in the client.
+
 ---
 
 ## Key Features

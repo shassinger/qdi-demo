@@ -91,9 +91,11 @@ qdi_status qdi_authenticate(
 ) {
     if (!device || !credentials_json) return QDI_ERROR_INVALID_ARGUMENT;
 
-    // Simple authentication logic
-    if (strstr(credentials_json, "\"token\": \"valid-token\"") != nullptr ||
-        strstr(credentials_json, "valid-token") != nullptr) {
+    // Simple authentication logic. The demo default remains valid-token, but
+    // deployments can configure the same expected token for the HTTP adapter.
+    const char* configured_token = getenv("QDI_AUTH_TOKEN");
+    const char* expected_token = configured_token ? configured_token : "valid-token";
+    if (strstr(credentials_json, expected_token) != nullptr) {
         device->authenticated = true;
         return QDI_SUCCESS;
     }

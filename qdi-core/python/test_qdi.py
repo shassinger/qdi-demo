@@ -1,9 +1,9 @@
 import time
-from qdi_python import QdiClient, QDIError
+from qdi_python import NativeQdiClient, QDIError
 
 def test_full_lifecycle():
     print("Initializing QDI client...")
-    client = QdiClient()
+    client = NativeQdiClient()
 
     print("Running Discover...")
     descriptor = client.discover()

@@ -1,7 +1,7 @@
 import ctypes
 import os
 import json
-from ctypes import c_char_p, c_size_t, c_uint32, c_int, POINTER, Structure, c_void_p
+from ctypes import c_char_p, c_size_t, c_uint32, c_int, POINTER, c_void_p
 
 # Load QDI library
 _lib_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "libqdi_mock.dylib")
@@ -54,13 +54,17 @@ if _lib:
 
 class QDIError(Exception):
     """Exception raised for QDI errors."""
-    def __init__(self, code):
+    def __init__(self, code, detail=None):
         self.code = code
-        super().__init__(f"QDI function failed with status code {code}")
+        super().__init__(detail or f"QDI function failed with status code {code}")
 
 
-class QdiClient:
-    """Python wrapper for QDI C-ABI client."""
+class NativeQdiClient:
+    """Python wrapper for the local QDI C-ABI mock backend.
+
+    This is intentionally kept as the server-side implementation. Applications
+    should use :class:`QdiClient`, which communicates over HTTP(S).
+    """
     
     def __init__(self, device_handle=None):
         if not _lib:
@@ -159,3 +163,76 @@ class QdiClient:
             raise QDIError(res)
             
         return json.loads(est_buf.value.decode("utf-8"))
+
+
+class QdiClient:
+    """HTTP(S) QDI client.
+
+    HTTP provides the transport boundary; TLS (HTTPS) supplies encryption and
+    the bearer token is carried in the standard Authorization header.
+    """
+
+    def __init__(self, base_url=None, token=None, timeout=30.0, client=None):
+        try:
+            import httpx
+        except ImportError as exc:
+            raise RuntimeError("The HTTP QDI client requires httpx. Install the demo dependencies first.") from exc
+        self.base_url = (base_url or os.environ.get("QDI_API_URL", "http://127.0.0.1:8000")).rstrip("/") + "/"
+        self.token = token
+        self._client = client or httpx.Client(base_url=self.base_url, timeout=timeout)
+        self._owns_client = client is None
+        self._discovered = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()
+
+    def close(self):
+        if self._owns_client:
+            self._client.close()
+
+    def _headers(self):
+        return {"Authorization": f"Bearer {self.token}"} if self.token else {}
+
+    def _request(self, method, path, **kwargs):
+        headers = dict(kwargs.pop("headers", {}))
+        headers.update(self._headers())
+        response = self._client.request(method, path.lstrip("/"), headers=headers, **kwargs)
+        if response.is_error:
+            try:
+                detail = response.json().get("detail", response.text)
+            except ValueError:
+                detail = response.text
+            code = 2 if response.status_code == 401 else 4 if response.status_code == 404 else 99
+            raise QDIError(code, str(detail))
+        return response.json()
+
+    def discover(self):
+        descriptor = self._request("GET", "/qdi/v1/devices/mock/discover")
+        self._discovered = True
+        return descriptor
+
+    def authenticate(self, credentials_dict):
+        response = self._request("POST", "/qdi/v1/devices/mock/authenticate", json=credentials_dict)
+        self.token = response.get("access_token", credentials_dict.get("token"))
+
+    def send(self, task_payload: bytes, task_type: str, shots: int = 100):
+        return self._request("POST", "/qdi/v1/devices/mock/tasks", json={
+            "task_payload": task_payload.decode("utf-8"), "task_type": task_type, "shots": shots
+        })["task_id"]
+
+    def monitor(self, task_id):
+        data = self._request("GET", f"/qdi/v1/devices/mock/tasks/{task_id}/status")
+        statuses = {"QUEUED": 0, "EXECUTING": 1, "COMPLETED": 2, "FAULTED": 3, "CANCELLED": 4}
+        return statuses.get(data["status"], 99), data.get("advisory_metadata", {})
+
+    def receive(self, task_id):
+        data = self._request("GET", f"/qdi/v1/devices/mock/tasks/{task_id}/results")
+        return json.dumps(data["result"]), data["result_type"]
+
+    def estimate_resources(self, task_payload: bytes, task_type: str, shots: int = 100):
+        return self._request("POST", "/qdi/v1/devices/mock/estimate", json={
+            "task_payload": task_payload.decode("utf-8"), "task_type": task_type, "shots": shots
+        })
