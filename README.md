@@ -1,6 +1,6 @@
 # QDI Demo Sandbox
 
-An interactive demonstration of the Quantum Device Interface (QDI) standard.
+An interactive demonstration of the [Quantum Device Interface (QDI) standard](https://docs.google.com/document/d/1-5JNbe42icLuqTsmwj-hTND5o205u_jlt-kak3W653I/edit?usp=sharing).
 It combines a compiled C-ABI mock device, a FastAPI wrapper, Qiskit simulation,
 and a browser control panel.
 
