@@ -91,9 +91,24 @@ qdi_status qdi_authenticate(
 ) {
     if (!device || !credentials_json) return QDI_ERROR_INVALID_ARGUMENT;
 
-    // Simple authentication logic
-    if (strstr(credentials_json, "\"token\": \"valid-token\"") != nullptr ||
-        strstr(credentials_json, "valid-token") != nullptr) {
+    const char* configured_token = getenv("QDI_AUTH_TOKEN");
+    const std::string expected_token = configured_token ? configured_token : "valid-token";
+    const std::string credentials(credentials_json);
+    const size_t token_key = credentials.find("\"token\"");
+    const size_t colon = token_key == std::string::npos
+        ? std::string::npos
+        : credentials.find(':', token_key + 7);
+    const size_t value_start = colon == std::string::npos
+        ? std::string::npos
+        : credentials.find_first_not_of(" \t\r\n", colon + 1);
+    const size_t value_end = value_start == std::string::npos || credentials[value_start] != '"'
+        ? std::string::npos
+        : credentials.find('"', value_start + 1);
+
+    if (
+        value_end != std::string::npos
+        && credentials.substr(value_start + 1, value_end - value_start - 1) == expected_token
+    ) {
         device->authenticated = true;
         return QDI_SUCCESS;
     }

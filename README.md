@@ -14,6 +14,48 @@ and Codespaces startup through the same scripts, serves the dashboard and API
 from one process, and includes a browser-only device library. The QDI server
 still exposes one mock device; there is no device collection API.
 
+## HTTP transport
+
+Applications use `QdiClient` over HTTP(S); the FastAPI server uses
+`NativeQdiClient` as its adapter to the C-ABI mock device:
+
+```text
+application -> QdiClient -> HTTP(S) API -> NativeQdiClient -> qdi-core mock
+```
+
+The discovery and authentication calls establish the session. Authentication
+returns a bearer token, which the client sends in the standard HTTP
+`Authorization` header for submission, estimation, status, and result calls.
+
+```python
+from qdi_python import QdiClient
+
+with QdiClient() as client:
+    descriptor = client.discover()
+    client.authenticate({"token": "valid-token"})
+    task_id = client.send(b"OPENQASM 3.0;", "openqasm3")
+```
+
+When running that example from the repository root, add
+`qdi-core/python` to `PYTHONPATH`.
+
+`QdiClient` defaults to `http://127.0.0.1:8000`. Set `QDI_API_URL` or pass
+`base_url` to connect to another server. Set `QDI_AUTH_TOKEN` on the server to
+replace the demo token.
+
+For HTTPS, bootstrap first and then provide a certificate and matching private
+key directly to the server:
+
+```bash
+./scripts/bootstrap
+QDI_TLS_CERTFILE=/path/server.crt \
+QDI_TLS_KEYFILE=/path/server.key \
+.venv/bin/python qdi-core/python/qdi_demo_server.py
+```
+
+Use a certificate trusted by the client. The Python client does not disable
+TLS certificate verification.
+
 ## Run locally
 
 Requirements:
@@ -194,6 +236,10 @@ GET  /qdi/v1/devices/mock/tasks/{task_id}/status
 GET  /qdi/v1/devices/mock/tasks/{task_id}/results
 POST /qdi/v1/devices/mock/estimate
 ```
+
+Task submission, estimation, status, and result operations require the bearer
+token returned by the authentication call. Discovery and authentication remain
+unauthenticated protocol entry points.
 
 The demo harness also provides these support endpoints:
 

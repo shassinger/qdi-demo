@@ -2,16 +2,18 @@ import sys
 import os
 import re
 import json
+import secrets
 from pathlib import Path
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 # Ensure we can load QDI Python bindings
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from qdi_python import QdiClient, QDIError
+from qdi_python import NativeQdiClient, QDIError
 
 # Qiskit Simulators
 from qiskit import QuantumCircuit
@@ -31,7 +33,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-client = QdiClient()
+client = NativeQdiClient()
+bearer = HTTPBearer(auto_error=False)
+AUTH_TOKEN = os.environ.get("QDI_AUTH_TOKEN", "valid-token")
 
 # In-memory database of simulation results
 simulation_results = {}
@@ -131,11 +135,20 @@ def require_discovered():
             detail="Discovery required before this operation. Run qdi_discover first."
         )
 
-def require_authenticated():
-    if not session_state["authenticated"]:
+def require_authenticated(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer),
+):
+    supplied_token = credentials.credentials if credentials else ""
+    if (
+        not session_state["authenticated"]
+        or not secrets.compare_digest(supplied_token, AUTH_TOKEN)
+    ):
         raise HTTPException(
             status_code=401,
-            detail="Authentication required. Complete the QDI handshake before submitting work."
+            detail=(
+                "Authentication required. Supply the bearer token returned by "
+                "the QDI handshake."
+            ),
         )
 
 def validate_task_type(task_type: str):
@@ -359,18 +372,24 @@ def discover():
 @app.post("/qdi/v1/devices/mock/authenticate")
 def authenticate(req: AuthRequest):
     require_discovered()
+    if not secrets.compare_digest(req.token, AUTH_TOKEN):
+        session_state["authenticated"] = False
+        raise HTTPException(status_code=401, detail="Authentication failed (invalid token).")
     try:
         client.authenticate({"token": req.token})
         session_state["authenticated"] = True
-        return {"status": "authenticated"}
+        return {
+            "status": "authenticated",
+            "token_type": "Bearer",
+            "access_token": AUTH_TOKEN,
+        }
     except QDIError as e:
         session_state["authenticated"] = False
         raise HTTPException(status_code=401, detail="Authentication failed (invalid token).")
 
 @app.post("/qdi/v1/devices/mock/tasks")
-def send(req: TaskSubmitRequest):
+def send(req: TaskSubmitRequest, _auth=Depends(require_authenticated)):
     require_discovered()
-    require_authenticated()
     task_type = validate_task_type(req.task_type)
     validate_shots(req.shots)
     validate_payload_fits_device(req.task_payload, task_type)
@@ -405,9 +424,8 @@ def send(req: TaskSubmitRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/qdi/v1/devices/mock/estimate")
-def estimate(req: EstimateRequest):
+def estimate(req: EstimateRequest, _auth=Depends(require_authenticated)):
     require_discovered()
-    require_authenticated()
     task_type = validate_task_type(req.task_type)
     validate_shots(req.shots)
     if not MOCK_DEVICE_CONFIG["supports_estimation"]:
@@ -416,9 +434,8 @@ def estimate(req: EstimateRequest):
     return estimate_resources(req.task_payload, task_type, req.shots)
 
 @app.get("/qdi/v1/devices/mock/tasks/{task_id}/status")
-def monitor(task_id: str):
+def monitor(task_id: str, _auth=Depends(require_authenticated)):
     require_discovered()
-    require_authenticated()
     try:
         status_code, advisory = client.monitor(task_id)
         status_mapping = {
@@ -437,9 +454,8 @@ def monitor(task_id: str):
         raise HTTPException(status_code=404, detail="Task not found.")
 
 @app.get("/qdi/v1/devices/mock/tasks/{task_id}/results")
-def receive(task_id: str):
+def receive(task_id: str, _auth=Depends(require_authenticated)):
     require_discovered()
-    require_authenticated()
     try:
         result, result_type = client.receive(task_id)
         
@@ -488,5 +504,17 @@ def get_pnnl_circuits():
 if __name__ == "__main__":
     host = os.environ.get("QDI_API_HOST", "0.0.0.0")
     port = int(os.environ.get("QDI_API_PORT", "8000"))
-    print(f"Starting QDI Demo Server on http://{host}:{port} ...")
-    uvicorn.run(app, host=host, port=port)
+    certfile = os.environ.get("QDI_TLS_CERTFILE")
+    keyfile = os.environ.get("QDI_TLS_KEYFILE")
+    if bool(certfile) != bool(keyfile):
+        raise RuntimeError("QDI_TLS_CERTFILE and QDI_TLS_KEYFILE must be set together.")
+
+    scheme = "https" if certfile else "http"
+    print(f"Starting QDI Demo Server on {scheme}://{host}:{port} ...")
+    uvicorn.run(
+        app,
+        host=host,
+        port=port,
+        ssl_certfile=certfile,
+        ssl_keyfile=keyfile,
+    )

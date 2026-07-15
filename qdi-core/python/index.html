@@ -907,6 +907,7 @@
         const qdiState = {
             discovered: false,
             authenticated: false,
+            accessToken: null,
             descriptor: null,
             deviceConfig: null,
             devices: [],
@@ -1033,6 +1034,7 @@
         function resetProtocolUi() {
             qdiState.discovered = false;
             qdiState.authenticated = false;
+            qdiState.accessToken = null;
             qdiState.descriptor = null;
             if (qdiState.deviceConfig) {
                 renderDeviceSummary(qdiState.deviceConfig, "Configured");
@@ -1043,6 +1045,14 @@
             document.getElementById("resultsSection").style.display = "none";
             document.getElementById("progressBarContainer").style.display = "none";
             document.getElementById("progressBar").style.width = "0%";
+        }
+
+        function apiFetch(url, options = {}) {
+            const headers = new Headers(options.headers || {});
+            if (qdiState.accessToken) {
+                headers.set("Authorization", `Bearer ${qdiState.accessToken}`);
+            }
+            return fetch(url, {...options, headers});
         }
 
         function setNumberValue(id, value) {
@@ -1438,10 +1448,12 @@
                 logXRay("POST", url, reqBody, data, response.status);
 
                 if (!response.ok) throw new Error(detailMessage(data, "Authentication rejected."));
+                qdiState.accessToken = data.access_token;
                 qdiState.authenticated = true;
                 log("Trust established with the device! Handshake completed.", "success");
             } catch (err) {
                 qdiState.authenticated = false;
+                qdiState.accessToken = null;
                 log(err.message, "error");
             }
         }
@@ -1461,7 +1473,7 @@
             estimateBtn.disabled = true;
 
             try {
-                const response = await fetch(`${API_URL}${url}`, {
+                const response = await apiFetch(`${API_URL}${url}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(reqBody)
@@ -1504,7 +1516,7 @@
             resultsSection.style.display = "none";
 
             try {
-                const response = await fetch(`${API_URL}${url}`, {
+                const response = await apiFetch(`${API_URL}${url}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(reqBody)
@@ -1536,7 +1548,7 @@
             
             let interval = setInterval(async () => {
                 try {
-                    const response = await fetch(`${API_URL}${url}`);
+                    const response = await apiFetch(`${API_URL}${url}`);
                     const data = await response.json();
                     
                     logXRay("GET", `/qdi/v1/devices/mock/tasks/.../status`, null, data, response.status);
@@ -1575,7 +1587,7 @@
             const submitBtn = document.getElementById("submitBtn");
             
             try {
-                const response = await fetch(`${API_URL}${url}`);
+                const response = await apiFetch(`${API_URL}${url}`);
                 const data = await response.json();
                 
                 logXRay("GET", `/qdi/v1/devices/mock/tasks/.../results`, null, data, response.status);

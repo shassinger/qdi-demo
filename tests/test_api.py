@@ -19,6 +19,8 @@ def test_web_console_and_qdi_lifecycle():
         assert "Quantum Device Interface (QDI) Control Panel" in console.text
         assert "Create new…" in console.text
         assert "qdi-demo.custom-devices.v1" in console.text
+        assert "Authorization" in console.text
+        assert "accessToken" in console.text
         assert 'method: "PUT"' not in console.text
         assert console.text.count('const url = "/qdi/v1/devices/mock/config"') == 1
 
@@ -34,7 +36,7 @@ def test_web_console_and_qdi_lifecycle():
             headers={
                 "Origin": "null",
                 "Access-Control-Request-Method": "POST",
-                "Access-Control-Request-Headers": "content-type",
+                "Access-Control-Request-Headers": "authorization,content-type",
             },
         )
         assert file_preflight.status_code == 200
@@ -45,14 +47,37 @@ def test_web_console_and_qdi_lifecycle():
         assert discovery.status_code == 200
         assert discovery.json()["device_id"] == "mock_qdi_qubit_v1"
 
+        unauthenticated = client.post(
+            "/qdi/v1/devices/mock/tasks",
+            json={"task_payload": "OPENQASM 3.0;", "task_type": "openqasm3"},
+        )
+        assert unauthenticated.status_code == 401
+
+        invalid_authentication = client.post(
+            "/qdi/v1/devices/mock/authenticate",
+            json={"token": "prefix-valid-token-suffix"},
+        )
+        assert invalid_authentication.status_code == 401
+
         authentication = client.post(
             "/qdi/v1/devices/mock/authenticate",
             json={"token": "valid-token"},
         )
         assert authentication.status_code == 200
+        assert authentication.json()["token_type"] == "Bearer"
+        access_token = authentication.json()["access_token"]
+        auth_headers = {"Authorization": f"Bearer {access_token}"}
+
+        wrong_bearer = client.post(
+            "/qdi/v1/devices/mock/tasks",
+            headers={"Authorization": "Bearer wrong-token"},
+            json={"task_payload": "OPENQASM 3.0;", "task_type": "openqasm3"},
+        )
+        assert wrong_bearer.status_code == 401
 
         submission = client.post(
             "/qdi/v1/devices/mock/tasks",
+            headers=auth_headers,
             json={
                 "task_payload": (
                     'OPENQASM 2.0;\ninclude "qelib1.inc";\n'
@@ -67,12 +92,18 @@ def test_web_console_and_qdi_lifecycle():
 
         statuses = []
         for _ in range(3):
-            response = client.get(f"/qdi/v1/devices/mock/tasks/{task_id}/status")
+            response = client.get(
+                f"/qdi/v1/devices/mock/tasks/{task_id}/status",
+                headers=auth_headers,
+            )
             assert response.status_code == 200
             statuses.append(response.json()["status"])
         assert statuses[-1] == "COMPLETED"
 
-        result = client.get(f"/qdi/v1/devices/mock/tasks/{task_id}/results")
+        result = client.get(
+            f"/qdi/v1/devices/mock/tasks/{task_id}/results",
+            headers=auth_headers,
+        )
         assert result.status_code == 200
         assert result.json()["result_type"] == "counts"
         assert sum(result.json()["result"].values()) == 100
