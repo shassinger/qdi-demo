@@ -1,9 +1,9 @@
 import time
-from qdi_python import QdiClient, QDIError
+from qdi_python import NativeQdiClient, QDIError
 
 def test_full_lifecycle():
     print("Initializing QDI client...")
-    client = QdiClient()
+    client = NativeQdiClient()
 
     print("Running Discover...")
     descriptor = client.discover()
@@ -17,6 +17,14 @@ def test_full_lifecycle():
         assert False, "Send should have failed with unauthorized status"
     except QDIError as e:
         print("Successfully caught expected error (code=2/unauthorized):", e)
+
+    print("Attempting Authenticate with a lookalike token (should fail)...")
+    try:
+        client.authenticate({"token": "prefix-valid-token-suffix"})
+        assert False, "Authentication should require an exact token match"
+    except QDIError as e:
+        assert e.code == 2
+        print("Successfully rejected lookalike token:", e)
 
     print("Running Authenticate...")
     client.authenticate({"token": "valid-token"})

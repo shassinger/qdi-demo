@@ -531,6 +531,33 @@
             word-break: break-all;
         }
 
+        .xray-transport {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr);
+            gap: 8px;
+            align-items: center;
+            background: rgba(59, 130, 246, 0.08);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 6px;
+            padding: 8px;
+        }
+
+        .xray-transport-badge {
+            color: var(--accent-blue);
+            background: rgba(59, 130, 246, 0.16);
+            border-radius: 4px;
+            padding: 3px 6px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+
+        .xray-full-url {
+            color: var(--text-primary);
+            font-size: 11px;
+            word-break: break-all;
+        }
+
         .xray-status {
             background: rgba(16, 185, 129, 0.15);
             color: var(--accent-green);
@@ -810,11 +837,11 @@
         <!-- QDI X-Ray Inspector Panel -->
         <div class="card xray-panel">
             <div class="card-title">
-                <span>QDI X-Ray Payload Inspector</span>
+                <span>QDI HTTP Transport Inspector</span>
                 <button class="btn btn-outline" style="padding: 4px 8px; font-size: 10px;" onclick="clearXRay()">Clear</button>
             </div>
             <div class="xray-log-container" id="xrayLog">
-                <p style="color: var(--text-secondary); text-align: center; margin: auto 0;">No protocol interactions captured yet.</p>
+                <p style="color: var(--text-secondary); text-align: center; margin: auto 0;">No HTTP protocol interactions captured yet.</p>
             </div>
         </div>
     </div>
@@ -907,6 +934,7 @@
         const qdiState = {
             discovered: false,
             authenticated: false,
+            accessToken: null,
             descriptor: null,
             deviceConfig: null,
             devices: [],
@@ -938,8 +966,31 @@
             consoleBox.scrollTop = consoleBox.scrollHeight;
         }
 
+        function redactSensitiveData(value) {
+            if (Array.isArray(value)) return value.map(redactSensitiveData);
+            if (!value || typeof value !== "object") return value;
+
+            return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+                const normalizedKey = key.toLowerCase();
+                const sensitive = ["token", "access_token", "authorization"].includes(normalizedKey);
+                const redactedValue = normalizedKey === "authorization"
+                    ? "Bearer [redacted]"
+                    : "[redacted]";
+                return [key, sensitive ? redactedValue : redactSensitiveData(item)];
+            }));
+        }
+
+        function responseHeaderSummary(response) {
+            const headers = {};
+            ["content-type", "content-length", "server", "date"].forEach((name) => {
+                const value = response.headers.get(name);
+                if (value) headers[name] = value;
+            });
+            return headers;
+        }
+
         // X-Ray logger helper
-        function logXRay(method, url, requestData, responseData, statusCode) {
+        function logXRay(method, url, requestData, responseData, response, requestHeaders = {}) {
             const container = document.getElementById("xrayLog");
             
             // Clear default message if first log
@@ -948,14 +999,23 @@
             }
 
             const timestamp = new Date().toLocaleTimeString();
+            const statusCode = response.status;
             const methodClass = method === "POST" ? "xray-method-post" : "xray-method-get";
             const statusClass = statusCode >= 400 ? "xray-status error" : "xray-status";
+            const fullUrl = new URL(url, `${API_URL}/`).href;
+            const transport = new URL(fullUrl).protocol.replace(":", "").toUpperCase();
 
             const logEntry = document.createElement("div");
             logEntry.className = "xray-log-entry";
-            
-            let reqJson = requestData ? JSON.stringify(requestData, null, 2) : "NONE";
-            let resJson = responseData ? JSON.stringify(responseData, null, 2) : "NONE";
+
+            const reqHeadersJson = JSON.stringify(redactSensitiveData(requestHeaders), null, 2);
+            const resHeadersJson = JSON.stringify(responseHeaderSummary(response), null, 2);
+            const reqJson = requestData
+                ? JSON.stringify(redactSensitiveData(requestData), null, 2)
+                : "NONE";
+            const resJson = responseData
+                ? JSON.stringify(redactSensitiveData(responseData), null, 2)
+                : "NONE";
 
             logEntry.innerHTML = `
                 <div class="xray-header">
@@ -965,11 +1025,19 @@
                     </span>
                     <span class="${statusClass}">${statusCode}</span>
                 </div>
+                <div class="xray-transport">
+                    <span class="xray-transport-badge">${escapeHtml(transport)}</span>
+                    <span class="xray-full-url">${escapeHtml(fullUrl)}</span>
+                </div>
                 <div style="font-size: 10px; color: var(--text-secondary); text-align: right;">${timestamp}</div>
+                <div class="xray-body-label">Request Headers</div>
+                <pre class="xray-json">${escapeHtml(reqHeadersJson)}</pre>
                 <div class="xray-body-label">Request Body</div>
-                <pre class="xray-json">${reqJson}</pre>
+                <pre class="xray-json">${escapeHtml(reqJson)}</pre>
+                <div class="xray-body-label">Response Headers</div>
+                <pre class="xray-json">${escapeHtml(resHeadersJson)}</pre>
                 <div class="xray-body-label">Response Body</div>
-                <pre class="xray-json">${resJson}</pre>
+                <pre class="xray-json">${escapeHtml(resJson)}</pre>
             `;
 
             container.appendChild(logEntry);
@@ -977,7 +1045,7 @@
         }
 
         function clearXRay() {
-            document.getElementById("xrayLog").innerHTML = `<p style="color: var(--text-secondary); text-align: center; margin: auto 0;">No protocol interactions captured yet.</p>`;
+            document.getElementById("xrayLog").innerHTML = `<p style="color: var(--text-secondary); text-align: center; margin: auto 0;">No HTTP protocol interactions captured yet.</p>`;
         }
 
         function detailMessage(data, fallback) {
@@ -1033,6 +1101,7 @@
         function resetProtocolUi() {
             qdiState.discovered = false;
             qdiState.authenticated = false;
+            qdiState.accessToken = null;
             qdiState.descriptor = null;
             if (qdiState.deviceConfig) {
                 renderDeviceSummary(qdiState.deviceConfig, "Configured");
@@ -1043,6 +1112,14 @@
             document.getElementById("resultsSection").style.display = "none";
             document.getElementById("progressBarContainer").style.display = "none";
             document.getElementById("progressBar").style.width = "0%";
+        }
+
+        function apiFetch(url, options = {}) {
+            const headers = new Headers(options.headers || {});
+            if (qdiState.accessToken) {
+                headers.set("Authorization", `Bearer ${qdiState.accessToken}`);
+            }
+            return fetch(url, {...options, headers});
         }
 
         function setNumberValue(id, value) {
@@ -1178,7 +1255,7 @@
             const url = "/qdi/v1/devices/mock/config";
             const response = await fetch(`${API_URL}${url}`);
             const data = await response.json();
-            logXRay("GET", url, null, data, response.status);
+            logXRay("GET", url, null, data, response);
             if (!response.ok) throw new Error(detailMessage(data, "Device config fetch failed."));
             qdiState.deviceConfig = data;
             qdiState.activeDeviceId = data.device_id;
@@ -1405,7 +1482,7 @@
                 const response = await fetch(`${API_URL}${url}`);
                 const data = await response.json();
                 
-                logXRay("GET", url, null, data, response.status);
+                logXRay("GET", url, null, data, response);
 
                 if (!response.ok) throw new Error("Discover call failed.");
                 
@@ -1435,13 +1512,22 @@
                 });
                 
                 const data = await response.json();
-                logXRay("POST", url, reqBody, data, response.status);
+                logXRay(
+                    "POST",
+                    url,
+                    reqBody,
+                    data,
+                    response,
+                    {"Content-Type": "application/json"},
+                );
 
                 if (!response.ok) throw new Error(detailMessage(data, "Authentication rejected."));
+                qdiState.accessToken = data.access_token;
                 qdiState.authenticated = true;
                 log("Trust established with the device! Handshake completed.", "success");
             } catch (err) {
                 qdiState.authenticated = false;
+                qdiState.accessToken = null;
                 log(err.message, "error");
             }
         }
@@ -1461,14 +1547,24 @@
             estimateBtn.disabled = true;
 
             try {
-                const response = await fetch(`${API_URL}${url}`, {
+                const response = await apiFetch(`${API_URL}${url}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(reqBody)
                 });
 
                 const data = await response.json();
-                logXRay("POST", url, reqBody, data, response.status);
+                logXRay(
+                    "POST",
+                    url,
+                    reqBody,
+                    data,
+                    response,
+                    {
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer [redacted]",
+                    },
+                );
 
                 if (!response.ok) throw new Error(detailMessage(data, "Resource estimation failed."));
 
@@ -1504,14 +1600,24 @@
             resultsSection.style.display = "none";
 
             try {
-                const response = await fetch(`${API_URL}${url}`, {
+                const response = await apiFetch(`${API_URL}${url}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(reqBody)
                 });
 
                 const data = await response.json();
-                logXRay("POST", url, reqBody, data, response.status);
+                logXRay(
+                    "POST",
+                    url,
+                    reqBody,
+                    data,
+                    response,
+                    {
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer [redacted]",
+                    },
+                );
 
                 if (!response.ok) throw new Error(detailMessage(data, "Task submission failed."));
 
@@ -1536,10 +1642,17 @@
             
             let interval = setInterval(async () => {
                 try {
-                    const response = await fetch(`${API_URL}${url}`);
+                    const response = await apiFetch(`${API_URL}${url}`);
                     const data = await response.json();
                     
-                    logXRay("GET", `/qdi/v1/devices/mock/tasks/.../status`, null, data, response.status);
+                    logXRay(
+                        "GET",
+                        url,
+                        null,
+                        data,
+                        response,
+                        {"Authorization": "Bearer [redacted]"},
+                    );
 
                     if (!response.ok) throw new Error("Status query failed.");
                     
@@ -1575,10 +1688,17 @@
             const submitBtn = document.getElementById("submitBtn");
             
             try {
-                const response = await fetch(`${API_URL}${url}`);
+                const response = await apiFetch(`${API_URL}${url}`);
                 const data = await response.json();
                 
-                logXRay("GET", `/qdi/v1/devices/mock/tasks/.../results`, null, data, response.status);
+                logXRay(
+                    "GET",
+                    url,
+                    null,
+                    data,
+                    response,
+                    {"Authorization": "Bearer [redacted]"},
+                );
 
                 if (!response.ok) throw new Error("Retrieve results failed.");
                 
