@@ -17,6 +17,12 @@ def test_web_console_and_qdi_lifecycle():
         console = client.get("/")
         assert console.status_code == 200
         assert "Quantum Device Interface (QDI) Control Panel" in console.text
+        assert "QDI HTTP Transport Inspector" in console.text
+        assert "Request Headers" in console.text
+        assert "Response Headers" in console.text
+        assert "xray-transport-badge" in console.text
+        assert "Bearer [redacted]" in console.text
+        assert 'sensitive ? redactedValue' in console.text
         assert "Create new…" in console.text
         assert "qdi-demo.custom-devices.v1" in console.text
         assert "Authorization" in console.text

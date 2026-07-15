@@ -26,6 +26,9 @@ application -> QdiClient -> HTTP(S) API -> NativeQdiClient -> qdi-core mock
 The discovery and authentication calls establish the session. Authentication
 returns a bearer token, which the client sends in the standard HTTP
 `Authorization` header for submission, estimation, status, and result calls.
+The dashboard's HTTP Transport Inspector displays the resolved HTTP(S) URL,
+method, status, request and response headers, and JSON payloads. Authentication
+tokens are always redacted in the inspector.
 
 ```python
 from qdi_python import QdiClient
